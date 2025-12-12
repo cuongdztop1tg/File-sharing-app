@@ -1,0 +1,61 @@
+# ------------------------------------
+# 1. Compilation Artifacts (File biên dịch)
+# ------------------------------------
+# Bỏ qua thư mục chứa file thực thi và file object
+bin/
+obj/
+
+# Bỏ qua các file thực thi nếu lỡ tạo ở root
+client
+server
+*.exe
+*.out
+*.app
+
+# Bỏ qua file object (.o) và dependency (.d) nếu nằm rải rác
+*.o
+*.d
+*.so
+*.dll
+
+# ------------------------------------
+# 2. Runtime Data & Logs (Dữ liệu chạy thử)
+# ------------------------------------
+# Bỏ qua toàn bộ file trong thư mục data (users.txt, groups.txt,...)
+data/*
+
+# NHƯNG giữ lại file .keep để Git vẫn tạo thư mục data/ khi clone về
+!data/.keep
+
+# Bỏ qua toàn bộ file trong thư mục files (nơi chứa file upload)
+data/files/*
+!data/files/.keep
+
+# Bỏ qua file log
+*.log
+src/*.log
+
+# ------------------------------------
+# 3. Editor & OS Configs (Cấu hình máy cá nhân)
+# ------------------------------------
+# VS Code
+.vscode/
+
+# MacOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+
+# Vim / Emacs swap files
+*.swp
+*~
+
+# ------------------------------------
+# 4. Other
+# ------------------------------------
+# Bỏ qua file nén nếu lỡ tay tạo
+*.zip
+*.tar.gz
+*.rar
