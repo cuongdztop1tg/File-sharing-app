@@ -1,13 +1,8 @@
-Here is the consolidated **`README.md`** file. You can copy the code block below and paste it directly into your `README.md` file.
-
-```markdown
 # Network Programming Project: File Sharing Application
 
 This is a multi-threaded Client-Server application written in C using TCP Sockets. It features a custom application-layer protocol, session management, and file transfer capabilities.
 
 **Current Phase:** Module 1 (Core Architecture, Authentication, and Session Management).
-
----
 
 ## 📂 1. Project Structure
 
