@@ -1,43 +1,51 @@
-# ------------------------------------
-# 1. Compilation Artifacts (File biên dịch)
-# ------------------------------------
-# Bỏ qua thư mục chứa file thực thi và file object
+# ------------------------------------------------
+# 1. Compilation Artifacts (Build Output)
+# ------------------------------------------------
+# Ignore directories containing compiled binaries and object files
 bin/
 obj/
 
-# Bỏ qua các file thực thi nếu lỡ tạo ở root
-client
-server
-*.exe
-*.out
-*.app
-
-# Bỏ qua file object (.o) và dependency (.d) nếu nằm rải rác
+# Ignore object files and dependency files anywhere in the project
 *.o
 *.d
 *.so
 *.dll
+*.dylib
 
-# ------------------------------------
-# 2. Runtime Data & Logs (Dữ liệu chạy thử)
-# ------------------------------------
-# Bỏ qua toàn bộ file trong thư mục data (users.txt, groups.txt,...)
+# ------------------------------------------------
+# 2. Executables (Root Level)
+# ------------------------------------------------
+# IMPORTANT: The leading '/' ensures we only ignore files in the root folder,
+# NOT the source directories 'src/client' or 'src/server'.
+/client
+/server
+/main
+
+# Ignore common executable extensions (Windows/Linux)
+*.exe
+*.out
+*.app
+
+# ------------------------------------------------
+# 3. Runtime Data & Logs
+# ------------------------------------------------
+# Ignore all runtime data (databases, uploaded files)
 data/*
 
-# NHƯNG giữ lại file .keep để Git vẫn tạo thư mục data/ khi clone về
+# EXCEPTION: Keep the .keep file so the 'data' folder structure is committed
 !data/.keep
 
-# Bỏ qua toàn bộ file trong thư mục files (nơi chứa file upload)
+# Specific rule for file storage folder
 data/files/*
 !data/files/.keep
 
-# Bỏ qua file log
+# Ignore log files generated during runtime
 *.log
 src/*.log
 
-# ------------------------------------
-# 3. Editor & OS Configs (Cấu hình máy cá nhân)
-# ------------------------------------
+# ------------------------------------------------
+# 4. Editor & OS Configuration
+# ------------------------------------------------
 # VS Code
 .vscode/
 
@@ -47,15 +55,8 @@ src/*.log
 # Windows
 Thumbs.db
 ehthumbs.db
+desktop.ini
 
-# Vim / Emacs swap files
+# Vim / Emacs temporary swap files
 *.swp
 *~
-
-# ------------------------------------
-# 4. Other
-# ------------------------------------
-# Bỏ qua file nén nếu lỡ tay tạo
-*.zip
-*.tar.gz
-*.rar

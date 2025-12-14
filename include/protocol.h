@@ -1,3 +1,6 @@
+#ifndef PROTOCOL_H
+#define PROTOCOL_H
+
 typedef enum {
     // System & Status
     MSG_CONNECT,
@@ -38,3 +41,7 @@ typedef struct {
     MessageType type;
     int payload_len;
 } PacketHeader;
+
+#define BUFFER_SIZE 4096
+
+#endif
