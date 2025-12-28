@@ -14,6 +14,9 @@
 void handle_server_message(int sockfd);
 void handle_user_input(int sockfd);
 void print_menu();
+void upload_file(int sockfd, char *filename);
+void request_list_files(int sockfd);
+void download_file(int sockfd, char *filename);
 
 // --- MAIN LOOP ---
 
@@ -97,6 +100,9 @@ void handle_server_message(int sockfd) {
         case MSG_LIST_GROUPS:
             printf("--- GROUP LIST ---\n%s\n------------------\n", buffer);
             break;
+        case MSG_LIST_RESPONSE:
+            printf("\n--- SERVER FILES ---\n%s\n--------------------\n", buffer);
+            break;
         
         // Add other cases here (File transfer, etc.)
         
@@ -162,6 +168,27 @@ void handle_user_input(int sockfd) {
     }
     else if (strcasecmp(command, "LIST_GROUPS") == 0) {
         send_packet(sockfd, MSG_LIST_GROUPS, "", 0);
+    }
+    else if (strcasecmp(command, "UPLOAD") == 0) {
+        if (args < 2) {
+            printf("Usage: UPLOAD <filename>\n");
+        } else {
+            upload_file(sockfd, arg1); // arg1 là tên file
+        }
+    }
+    else if (strcasecmp(command, "LIST") == 0) {
+        request_list_files(sockfd);
+    }
+    else if (strcasecmp(command, "DOWNLOAD") == 0) {
+        if (args < 2) printf("Usage: DOWNLOAD <filename>\n");
+        else download_file(sockfd, arg1);
+    }
+    else if (strcasecmp(command, "DELETE") == 0) {
+        if (args < 2) printf("Usage: DELETE <filename>\n");
+        else {
+            // Gửi lệnh xóa (Logic đơn giản nên có thể code trực tiếp hoặc tách hàm)
+            send_packet(sockfd, MSG_DELETE_ITEM, arg1, strlen(arg1));
+        }
     }
     // Add more commands here...
     else {

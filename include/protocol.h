@@ -24,17 +24,23 @@ typedef enum {
     MSG_APPROVE_MEMBER,
 
     // File system
-    MSG_LIST_FILES,
+    // MSG_LIST_FILES,
     MSG_CREATE_FOLDER,
     MSG_DELETE_ITEM,
     MSG_RENAME_ITEM,
     MSG_MOVE_ITEM,
     MSG_COPY_ITEM,
 
-    // File transfer
-    MSG_UPLOAD_REQ,
-    MSG_DOWNLOAD_REQ,
-    MSG_DILE_DATA
+    // File Transfer
+    MSG_UPLOAD_REQ,     // Yêu cầu upload: Payload = "filename filesize"
+    MSG_DOWNLOAD_REQ,   // Yêu cầu download: Payload = "filename"
+    MSG_FILE_DATA,      // Gửi 1 gói dữ liệu (Chunk)
+    MSG_FILE_END,       // Thông báo đã gửi xong file (EOF)
+    MSG_FILE_ERROR,     // Lỗi trong quá trình truyền file
+    
+    // Directory Listing
+    MSG_LIST_FILES,     // Client hỏi danh sách file
+    MSG_LIST_RESPONSE   // Server trả về danh sách file (chuỗi dài)
 } MessageType;
 
 typedef struct {
