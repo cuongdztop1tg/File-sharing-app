@@ -177,7 +177,15 @@ void handle_user_input(int sockfd) {
         }
     }
     else if (strcasecmp(command, "LIST") == 0) {
-        request_list_files(sockfd);
+        // request_list_files(sockfd);
+        // Nếu user gõ "LIST tailieu" (args = 2) -> Gửi "tailieu"
+        if (args >= 2) {
+            send_packet(sockfd, MSG_LIST_FILES, arg1, strlen(arg1));
+        } 
+        // Nếu user chỉ gõ "LIST" -> Gửi chuỗi rỗng ""
+        else {
+            send_packet(sockfd, MSG_LIST_FILES, "", 0);
+        }
     }
     else if (strcasecmp(command, "DOWNLOAD") == 0) {
         if (args < 2) printf("Usage: DOWNLOAD <filename>\n");
@@ -188,6 +196,44 @@ void handle_user_input(int sockfd) {
         else {
             // Gửi lệnh xóa (Logic đơn giản nên có thể code trực tiếp hoặc tách hàm)
             send_packet(sockfd, MSG_DELETE_ITEM, arg1, strlen(arg1));
+        }
+    }
+    // 1. Lệnh Tạo thư mục
+    else if (strcasecmp(command, "MKDIR") == 0) {
+        if (args < 2) {
+            printf("Usage: MKDIR <foldername>\n");
+        } else {
+            send_packet(sockfd, MSG_CREATE_FOLDER, arg1, strlen(arg1));
+        }
+    }
+    // 2. Lệnh Đổi tên (File hoặc Folder)
+    else if (strcasecmp(command, "RENAME") == 0) {
+        if (args < 3) {
+            printf("Usage: RENAME <old_name> <new_name>\n");
+        } else {
+            char payload[256];
+            sprintf(payload, "%s %s", arg1, arg2); // Gộp 2 tham số thành chuỗi payload
+            send_packet(sockfd, MSG_RENAME_ITEM, payload, strlen(payload));
+        }
+    }
+    // 3. Lệnh Copy File
+    else if (strcasecmp(command, "COPY") == 0) {
+        if (args < 3) {
+            printf("Usage: COPY <source_file> <dest_file>\n");
+        } else {
+            char payload[256];
+            sprintf(payload, "%s %s", arg1, arg2);
+            send_packet(sockfd, MSG_COPY_ITEM, payload, strlen(payload));
+        }
+    }
+    // 4. Lệnh Di chuyển (Move)
+    else if (strcasecmp(command, "MOVE") == 0) {
+        if (args < 3) {
+            printf("Usage: MOVE <source> <dest>\n");
+        } else {
+            char payload[256];
+            sprintf(payload, "%s %s", arg1, arg2);
+            send_packet(sockfd, MSG_MOVE_ITEM, payload, strlen(payload));
         }
     }
     // Add more commands here...

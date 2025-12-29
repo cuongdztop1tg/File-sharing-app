@@ -38,6 +38,7 @@ typedef enum {
     MSG_FILE_END,       // Thông báo đã gửi xong file (EOF)
     MSG_FILE_ERROR,     // Lỗi trong quá trình truyền file
     
+    
     // Directory Listing
     MSG_LIST_FILES,     // Client hỏi danh sách file
     MSG_LIST_RESPONSE   // Server trả về danh sách file (chuỗi dài)
