@@ -172,6 +172,15 @@ void handle_user_input(int sockfd) {
             send_packet(sockfd, MSG_CHANGE_PASS, payload, strlen(payload));
         }
     }
+    else if (strcasecmp(command, "DELETE_ACCOUNT") == 0) {
+        if (args < 2) {
+            printf("Usage: DELETE_ACCOUNT <pass>\n");
+        } else {
+            char payload[256];
+            sprintf(payload, "%s", arg1);
+            send_packet(sockfd, MSG_DELETE_ACCOUNT, payload, strlen(payload));
+        }
+    }
     else if (strcasecmp(command, "CREATE_GROUP") == 0) {
         if (args < 2) {
             printf("Usage: CREATE_GROUP <group_name>\n");
@@ -263,5 +272,6 @@ void print_menu() {
     printf("4. LIST_GROUPS\n");
     printf("5. LOGOUT\n");
     printf("6. CHANGE_PASS <old> <new>\n");
+    printf("7. DELETE ACCOUNT <pass>\n");
     printf("7. EXIT\n");
 }

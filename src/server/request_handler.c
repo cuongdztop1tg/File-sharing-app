@@ -8,6 +8,7 @@ void handle_login(int sockfd, char *payload);
 void handle_register(int sockfd, char *payload);
 void handle_logout(int sockfd, char *payload);
 void handle_change_password(int sockfd, char *payload);
+void handle_delete_account(int sockfd, char *payload);
 // void handle_create_group(int sockfd, char *payload); // Future implementation
 
 // Khai báo prototype cho Module 3 (File Handling)
@@ -37,6 +38,9 @@ void process_client_request(int sockfd, int msg_type, char *payload) {
             break;
         case MSG_CHANGE_PASS:
             handle_change_password(sockfd, payload);
+            break;
+        case MSG_DELETE_ACCOUNT:
+            handle_delete_account(sockfd, payload);
             break;
         
         // --- MODULE 3: FILE HANDLING ---

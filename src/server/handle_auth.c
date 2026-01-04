@@ -8,6 +8,7 @@
 int db_check_login(const char *username, const char *password);
 int db_register_user(const char *username, const char *password);
 int db_change_password(int user_id, const char *new_password);
+int db_delete_user(int user_id);
 Session *find_session(int sockfd);
 void log_activity(const char *msg);
 
@@ -178,5 +179,43 @@ void handle_change_password(int sockfd, char *payload) {
     } else {
         send_packet(sockfd, MSG_ERROR, "Current password is incorrect.", 29);
         log_activity("Failed password change attempt (wrong old pass).");
+    }
+}
+
+// --- XỬ LÝ XÓA TÀI KHOẢN ---
+void handle_delete_account(int sockfd, char *payload) {
+    Session *sess = find_session(sockfd);
+    if (!sess || !sess->is_logged_in) {
+        send_packet(sockfd, MSG_ERROR, "Login required", 14);
+        return;
+    }
+
+    char confirm_pass[50];
+    // Yêu cầu nhập mật khẩu để xác nhận xóa
+    if (sscanf(payload, "%s", confirm_pass) < 1) {
+        send_packet(sockfd, MSG_ERROR, "Confirm password required", 25);
+        return;
+    }
+
+    // Xác thực mật khẩu
+    int check_id = db_check_login(sess->username, confirm_pass);
+    if (check_id == sess->user_id) {
+        // Thực hiện xóa
+        if (db_delete_user(sess->user_id) == 0) {
+            char log_msg[200];
+            sprintf(log_msg, "User '%s' (ID %d) deleted their account.", sess->username, sess->user_id);
+            log_activity(log_msg);
+
+            // Force Logout
+            sess->user_id = -1;
+            sess->is_logged_in = 0;
+            strcpy(sess->username, "Guest");
+
+            send_packet(sockfd, MSG_SUCCESS, "Account deleted. You are logged out.", 36);
+        } else {
+            send_packet(sockfd, MSG_ERROR, "DB Error deleting account", 25);
+        }
+    } else {
+        send_packet(sockfd, MSG_ERROR, "Wrong password. Cannot delete.", 30);
     }
 }

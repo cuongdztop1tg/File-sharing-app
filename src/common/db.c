@@ -103,3 +103,36 @@ int db_change_password(int user_id, const char *new_password) {
         return -1;
     }
 }
+
+/**
+ * @brief Xóa user khỏi database
+ */
+int db_delete_user(int user_id) {
+    FILE *f = fopen(USER_DB_FILE, "r");
+    FILE *temp = fopen("users.tmp", "w");
+    if (!f || !temp) return -1;
+
+    int id;
+    char u[50], p[50];
+    int found = 0;
+
+    while (fscanf(f, "%d %s %s", &id, u, p) != EOF) {
+        if (id == user_id) {
+            found = 1; // Bỏ qua dòng này (không ghi vào temp)
+        } else {
+            fprintf(temp, "%d %s %s\n", id, u, p);
+        }
+    }
+
+    fclose(f);
+    fclose(temp);
+
+    if (found) {
+        remove(USER_DB_FILE);
+        rename("users.tmp", USER_DB_FILE);
+        return 0;
+    } else {
+        remove("users.tmp");
+        return -1;
+    }
+}
