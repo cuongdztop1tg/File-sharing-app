@@ -11,6 +11,30 @@ Session *find_session(int sockfd);
 void log_activity(const char *msg);
 
 void handle_login(int sockfd, char *payload) {
+    // 1. Lấy thông tin Session hiện tại
+    Session *sess = find_session(sockfd);
+    
+    // Safety check (hiếm khi xảy ra nếu code chạy đúng)
+    if (sess == NULL) {
+        send_packet(sockfd, MSG_ERROR, "Session Error", 13);
+        return;
+    }
+
+    // --- LOGIC MỚI: KIỂM TRA ĐÃ LOGIN CHƯA ---
+    if (sess->is_logged_in) {
+        char msg[256];
+        sprintf(msg, "Login failed: You are already logged in as '%s'. Please LOGOUT first.", sess->username);
+        send_packet(sockfd, MSG_ERROR, msg, strlen(msg));
+        
+        // Ghi log cảnh báo
+        char log_msg[300];
+        sprintf(log_msg, "User '%s' (ID %d) attempted to re-login without logout.", sess->username, sess->user_id);
+        log_activity(log_msg);
+        
+        return; // <--- Dừng hàm tại đây, không xử lý tiếp
+    }
+    // -----------------------------------------
+
     char user[50], pass[50];
     
     // Parse payload: "username password"
@@ -20,38 +44,44 @@ void handle_login(int sockfd, char *payload) {
         return;
     }
 
+    // ... (Phần code kiểm tra DB cũ giữ nguyên ở dưới) ...
     int user_id = db_check_login(user, pass);
     
     if (user_id != -1) {
-        // 1. Update Session
-        Session *sess = find_session(sockfd);
-        if (sess) {
-            sess->user_id = user_id;
-            sess->is_logged_in = 1;
-            strcpy(sess->username, user);
-        }
+        // Update Session
+        sess->user_id = user_id;
+        sess->is_logged_in = 1;
+        strcpy(sess->username, user);
 
-        // 2. Send Success Response
+        // Send Success Response
         char msg[100];
         sprintf(msg, "Login successful. Welcome %s (ID: %d)", user, user_id);
         send_packet(sockfd, MSG_SUCCESS, msg, strlen(msg));
         
-        // 3. Log
+        // Log
         char log_msg[200];
         sprintf(log_msg, "User '%s' (ID %d) logged in from %s", 
-                user, user_id, sess ? sess->client_ip : "Unknown");
+                user, user_id, sess->client_ip);
         log_activity(log_msg);
 
     } else {
         char *msg = "Invalid username or password";
         send_packet(sockfd, MSG_ERROR, msg, strlen(msg));
-        
         log_activity("Failed login attempt.");
     }
 }
 
 void handle_register(int sockfd, char *payload) {
+    Session *sess = find_session(sockfd);
+    if (sess && sess->is_logged_in) {
+        char msg[256];
+        sprintf(msg, "Registration failed: You are currently logged in as '%s'. Please LOGOUT first.", sess->username);
+        send_packet(sockfd, MSG_ERROR, msg, strlen(msg));
+        return; 
+    }
+    
     char user[50], pass[50];
+    
     
     if (sscanf(payload, "%s %s", user, pass) < 2) {
         send_packet(sockfd, MSG_ERROR, "Invalid format", 14);
@@ -71,4 +101,43 @@ void handle_register(int sockfd, char *payload) {
     } else {
         send_packet(sockfd, MSG_ERROR, "Username already exists", 23);
     }
+}
+
+/**
+ * @brief Xử lý yêu cầu đăng xuất từ client
+ */
+void handle_logout(int sockfd, char *payload) {
+    // 1. Tìm session của socket hiện tại
+    Session *sess = find_session(sockfd);
+    
+    // Safety check
+    if (sess == NULL) {
+        return; 
+    }
+
+    // 2. Kiểm tra xem user đã login chưa
+    if (sess->is_logged_in == 0) {
+        char *msg = "Logout failed: You are not logged in.";
+        send_packet(sockfd, MSG_ERROR, msg, strlen(msg));
+        return;
+    }
+
+    // 3. Thực hiện Logout: Reset thông tin Session về trạng thái Guest
+    int old_uid = sess->user_id;
+    char old_user[50];
+    strcpy(old_user, sess->username);
+
+    sess->user_id = -1;
+    sess->is_logged_in = 0;
+    strcpy(sess->username, "Guest");
+
+    // 4. Gửi phản hồi thành công
+    char msg[100];
+    sprintf(msg, "Goodbye %s! You have been logged out.", old_user);
+    send_packet(sockfd, MSG_SUCCESS, msg, strlen(msg));
+
+    // 5. Ghi log
+    char log_msg[200];
+    sprintf(log_msg, "User '%s' (ID %d) logged out.", old_user, old_uid);
+    log_activity(log_msg);
 }

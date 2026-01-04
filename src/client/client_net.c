@@ -159,6 +159,10 @@ void handle_user_input(int sockfd) {
             send_packet(sockfd, MSG_REGISTER, payload, strlen(payload));
         }
     }
+    else if (strcasecmp(command, "LOGOUT") == 0) {
+        // Gửi yêu cầu logout, không cần payload
+        send_packet(sockfd, MSG_LOGOUT, "", 0);
+    }
     else if (strcasecmp(command, "CREATE_GROUP") == 0) {
         if (args < 2) {
             printf("Usage: CREATE_GROUP <group_name>\n");
@@ -248,5 +252,6 @@ void print_menu() {
     printf("2. REGISTER <user> <pass>\n");
     printf("3. CREATE_GROUP <name>\n");
     printf("4. LIST_GROUPS\n");
-    printf("5. EXIT\n");
+    printf("5. LOGOUT\n");
+    printf("6. EXIT\n");
 }
