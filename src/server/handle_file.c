@@ -12,18 +12,48 @@
 
 // Khai báo trước hàm này để các hàm bên dưới có thể gọi nó
 int remove_directory_recursive(const char *path);
+Session *find_session(int sockfd);
+void log_activity(const char *msg);
+int remove_directory_recursive(const char *path);
+
+// --- HÀM HỖ TRỢ LOGGING ---
+/**
+ * @brief Lấy chuỗi thông tin client để ghi log (VD: [127.0.0.1] User 'admin' (ID 1))
+ */
+void get_log_prefix(int sockfd, char *buffer) {
+    Session *s = find_session(sockfd);
+    if (s) {
+        // Nếu user đã login hoặc là guest
+        sprintf(buffer, "[%s] User '%s' (ID %d)", s->client_ip, s->username, s->user_id);
+    } else {
+        // Trường hợp không tìm thấy session (hiếm gặp)
+        sprintf(buffer, "[Unknown] Guest");
+    }
+}
 
 // 1. Hàm liệt kê file trong thư mục server
 void handle_list_files(int sockfd, char *subpath) {
+
+    char log_prefix[256];
+    get_log_prefix(sockfd, log_prefix);
+
+    char log_msg[512];
+    sprintf(log_msg, "%s requested LIST_FILES path='%s'", log_prefix, subpath ? subpath : "root");
+    log_activity(log_msg); // Ghi log yêu cầu
+
     DIR *d;
     struct dirent *dir;
     char file_list[BUFFER_SIZE] = "";
     char full_path[512];
+    
 
     // Bảo mật: Chặn người dùng truy cập ngược ra ngoài bằng ".."
     if (subpath != NULL && strstr(subpath, "..")) {
         char *err = "Error: Invalid path (Access denied).";
         send_packet(sockfd, MSG_ERROR, err, strlen(err));
+        // Log lỗi
+        sprintf(log_msg, "%s - LIST failed: Access denied (..)", log_prefix);
+        log_activity(log_msg);
         return;
     }
 
@@ -65,16 +95,27 @@ void handle_list_files(int sockfd, char *subpath) {
     } else {
         char *err = "Error: Folder not found.";
         send_packet(sockfd, MSG_ERROR, err, strlen(err));
+        // Log lỗi
+        sprintf(log_msg, "%s - LIST failed: Folder not found '%s'", log_prefix, subpath);
+        log_activity(log_msg);
     }
 }
 
 // 2. Hàm xử lý nhận file từ Client (Upload)
 void handle_upload_request(int sockfd, char *payload) {
+
+    char log_prefix[256];
+    get_log_prefix(sockfd, log_prefix);
+
     char filename[100];
     long filesize = 0;
     
     // Payload format: "filename filesize"
     sscanf(payload, "%s %ld", filename, &filesize);
+
+    char log_msg[512];
+    sprintf(log_msg, "%s requesting UPLOAD '%s' (%ld bytes)", log_prefix, filename, filesize);
+    log_activity(log_msg);
 
     char filepath[200];
     sprintf(filepath, "%s%s", FILE_STORAGE_PATH, filename);
@@ -82,6 +123,8 @@ void handle_upload_request(int sockfd, char *payload) {
     FILE *f = fopen(filepath, "wb"); // Mở chế độ Binary write
     if (!f) {
         send_packet(sockfd, MSG_ERROR, "Server cannot create file", 25);
+        sprintf(log_msg, "%s - UPLOAD failed: Cannot create file on disk", log_prefix);
+        log_activity(log_msg);
         return;
     }
 
@@ -121,9 +164,19 @@ void handle_upload_request(int sockfd, char *payload) {
     char success_msg[100];
     sprintf(success_msg, "File uploaded successfully: %s", filename);
     send_packet(sockfd, MSG_SUCCESS, success_msg, strlen(success_msg));
+    // Log hoàn tất
+    sprintf(log_msg, "%s - UPLOAD completed: '%s' (Received %ld bytes)", log_prefix, filename, total_received);
+    log_activity(log_msg);
 }
 
 void handle_download_request(int sockfd, char *filename) {
+    char log_prefix[256];
+    get_log_prefix(sockfd, log_prefix);
+
+    char log_msg[512];
+    sprintf(log_msg, "%s requesting DOWNLOAD '%s'", log_prefix, filename);
+    log_activity(log_msg);
+
     char filepath[256];
     sprintf(filepath, "%s%s", FILE_STORAGE_PATH, filename);
 
@@ -131,6 +184,9 @@ void handle_download_request(int sockfd, char *filename) {
     if (!f) {
         char *err = "File not found.";
         send_packet(sockfd, MSG_ERROR, err, strlen(err));
+
+        sprintf(log_msg, "%s - DOWNLOAD failed: File not found", log_prefix);
+        log_activity(log_msg);
         return;
     }
 
@@ -147,45 +203,71 @@ void handle_download_request(int sockfd, char *filename) {
     printf("[INFO] Sending file '%s' to Client...\n", filename);
     char buffer[BUFFER_SIZE];
     size_t bytes_read;
+    long total_sent = 0;
     
     while ((bytes_read = fread(buffer, 1, sizeof(buffer), f)) > 0) {
         send_packet(sockfd, MSG_FILE_DATA, buffer, bytes_read);
+        total_sent += bytes_read;
     }
     
     // 3. Gửi tín hiệu kết thúc
     send_packet(sockfd, MSG_FILE_END, "", 0);
-    
     fclose(f);
+    sprintf(log_msg, "%s - DOWNLOAD success: Sent '%s' (%ld bytes)", log_prefix, filename, total_sent);
+    log_activity(log_msg);
     printf("[INFO] File sent successfully.\n");
 }
 
 // Cập nhật hàm handle_delete_file hiện tại của bạn
 void handle_delete_item(int sockfd, char *filename) {
+    char log_prefix[256];
+    get_log_prefix(sockfd, log_prefix);
+    
+    char log_msg[512];
+    sprintf(log_msg, "%s requested DELETE '%s'", log_prefix, filename);
+    log_activity(log_msg);
+
     char filepath[256];
     sprintf(filepath, "%s%s", FILE_STORAGE_PATH, filename);
 
     struct stat st;
     if (stat(filepath, &st) == 0 && S_ISDIR(st.st_mode)) {
         // Nếu là thư mục, gọi hàm xóa đệ quy
-        if (remove_directory_recursive(filepath) == 0)
+        if (remove_directory_recursive(filepath) == 0){
             send_packet(sockfd, MSG_SUCCESS, "Folder deleted", 14);
-        else
+            sprintf(log_msg, "%s - DELETE success (Folder): '%s'", log_prefix, filename);
+            log_activity(log_msg);}
+        else{
             send_packet(sockfd, MSG_ERROR, "Cannot delete folder", 20);
+            sprintf(log_msg, "%s - DELETE failed (Folder): '%s'", log_prefix, filename);
+            log_activity(log_msg);
+            }
     } else {
         // Nếu là file thường
-        if (remove(filepath) == 0)
+        if (remove(filepath) == 0){
             send_packet(sockfd, MSG_SUCCESS, "File deleted", 12);
-        else
+            sprintf(log_msg, "%s - DELETE success (File): '%s'", log_prefix, filename);
+            log_activity(log_msg);
+        }
+        else{
             send_packet(sockfd, MSG_ERROR, "Cannot delete file", 18);
+            sprintf(log_msg, "%s - DELETE failed (File): '%s'", log_prefix, filename);
+            log_activity(log_msg);
+        }
     }
 }
 
 void handle_rename_item(int sockfd, char *payload) {
+    char log_prefix[256];
+    get_log_prefix(sockfd, log_prefix);
     char old_name[100], new_name[100];
     
     // Giả sử client gửi "oldname newname" (tách nhau bằng khoảng trắng)
     // Nếu tên file có khoảng trắng, bạn cần xử lý tách chuỗi kỹ hơn.
     sscanf(payload, "%s %s", old_name, new_name);
+    char log_msg[512];
+    sprintf(log_msg, "%s requested RENAME/MOVE '%s' -> '%s'", log_prefix, old_name, new_name);
+    log_activity(log_msg);
 
     char old_path[256], new_path[256];
     sprintf(old_path, "%s%s", FILE_STORAGE_PATH, old_name);
@@ -193,15 +275,26 @@ void handle_rename_item(int sockfd, char *payload) {
 
     if (rename(old_path, new_path) == 0) {
         send_packet(sockfd, MSG_SUCCESS, "Rename successful", 17);
+        sprintf(log_msg, "%s - RENAME success", log_prefix);
+        log_activity(log_msg);
     } else {
         send_packet(sockfd, MSG_ERROR, "Rename failed", 13);
+        sprintf(log_msg, "%s - RENAME failed", log_prefix);
+        log_activity(log_msg);
     }
 }
 
 
 void handle_copy_file(int sockfd, char *payload) {
+    char log_prefix[256];
+    get_log_prefix(sockfd, log_prefix);
+
     char src_name[100], dest_name[100];
     sscanf(payload, "%s %s", src_name, dest_name);
+
+    char log_msg[512];
+    sprintf(log_msg, "%s requested COPY '%s' -> '%s'", log_prefix, src_name, dest_name);
+    log_activity(log_msg);
 
     char src_path[256], dest_path[256];
     sprintf(src_path, "%s%s", FILE_STORAGE_PATH, src_name);
@@ -210,6 +303,8 @@ void handle_copy_file(int sockfd, char *payload) {
     FILE *f_src = fopen(src_path, "rb");
     if (!f_src) {
         send_packet(sockfd, MSG_ERROR, "Source file not found", 21);
+        sprintf(log_msg, "%s - COPY failed: Source not found", log_prefix);
+        log_activity(log_msg);
         return;
     }
 
@@ -217,6 +312,8 @@ void handle_copy_file(int sockfd, char *payload) {
     if (!f_dest) {
         fclose(f_src);
         send_packet(sockfd, MSG_ERROR, "Cannot create dest file", 23);
+        sprintf(log_msg, "%s - COPY failed: Cannot create dest file", log_prefix);
+        log_activity(log_msg);
         return;
     }
 
@@ -231,10 +328,19 @@ void handle_copy_file(int sockfd, char *payload) {
     fclose(f_dest);
 
     send_packet(sockfd, MSG_SUCCESS, "Copy successful", 15);
+    sprintf(log_msg, "%s - COPY success", log_prefix);
+    log_activity(log_msg);
 }
 
 // Nếu muốn làm thêm Tạo thư mục (Module 3 có yêu cầu)
 void handle_create_folder(int sockfd, char *foldername) {
+    char log_prefix[256];
+    get_log_prefix(sockfd, log_prefix);
+
+    char log_msg[512];
+    sprintf(log_msg, "%s requested CREATE FOLDER '%s'", log_prefix, foldername);
+    log_activity(log_msg);
+
     char path[256];
     sprintf(path, "%s%s", FILE_STORAGE_PATH, foldername);
     
@@ -246,8 +352,12 @@ void handle_create_folder(int sockfd, char *foldername) {
 #endif
     {
         send_packet(sockfd, MSG_SUCCESS, "Folder created.", 15);
+        sprintf(log_msg, "%s - MKDIR success", log_prefix);
+        log_activity(log_msg);
     } else {
         send_packet(sockfd, MSG_ERROR, "Cannot create folder (Existed?).", 30);
+        sprintf(log_msg, "%s - MKDIR failed", log_prefix);
+        log_activity(log_msg);
     }
 }
 
