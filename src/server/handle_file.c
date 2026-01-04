@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <limits.h>
+#include <sys/file.h>
 
 #define FILE_STORAGE_PATH "./data/files/"
 
@@ -130,6 +131,14 @@ void handle_upload_request(int sockfd, char *payload) {
         return;
     }
 
+    int fd = fileno(f); // Lấy file descriptor
+    if (flock(fd, LOCK_EX) != 0) { // LOCK_EX: Exclusive Lock (Khóa độc quyền)
+        perror("Lock failed");
+        fclose(f);
+    return;
+    }
+    
+
     // Báo cho Client biết Server đã sẵn sàng nhận
     send_packet(sockfd, MSG_SUCCESS, "Ready to receive", 16);
 
@@ -190,6 +199,11 @@ void handle_download_request(int sockfd, char *filename) {
         sprintf(log_msg, "%s - DOWNLOAD failed: File not found", log_prefix);
         log_activity(log_msg);
         return;
+    }
+
+    int fd = fileno(f);
+    if (flock(fd, LOCK_SH) != 0) { // LOCK_SH: Shared Lock (Nhiều người được đọc)
+    // Nếu file đang bị khóa bởi LOCK_EX (đang có người upload/sửa), lệnh này sẽ đợi
     }
 
     // 1. Gửi thông báo chấp nhận Download + Kích thước file (để Client hiện thanh tiến trình nếu muốn)
@@ -258,33 +272,6 @@ void handle_delete_item(int sockfd, char *filename) {
         }
     }
 }
-
-// void handle_rename_item(int sockfd, char *payload) {
-//     char log_prefix[256];
-//     get_log_prefix(sockfd, log_prefix);
-//     char old_name[100], new_name[100];
-    
-//     // Giả sử client gửi "oldname newname" (tách nhau bằng khoảng trắng)
-//     // Nếu tên file có khoảng trắng, bạn cần xử lý tách chuỗi kỹ hơn.
-//     sscanf(payload, "%s %s", old_name, new_name);
-//     char log_msg[512];
-//     sprintf(log_msg, "%s requested RENAME/MOVE '%s' -> '%s'", log_prefix, old_name, new_name);
-//     log_activity(log_msg);
-
-//     char old_path[256], new_path[256];
-//     sprintf(old_path, "%s%s", FILE_STORAGE_PATH, old_name);
-//     sprintf(new_path, "%s%s", FILE_STORAGE_PATH, new_name);
-
-//     if (rename(old_path, new_path) == 0) {
-//         send_packet(sockfd, MSG_SUCCESS, "Rename successful", 17);
-//         sprintf(log_msg, "%s - RENAME success", log_prefix);
-//         log_activity(log_msg);
-//     } else {
-//         send_packet(sockfd, MSG_ERROR, "Rename failed", 13);
-//         sprintf(log_msg, "%s - RENAME failed", log_prefix);
-//         log_activity(log_msg);
-//     }
-// }
 
 
 // --- XỬ LÝ 1: RENAME (Đổi tên tại chỗ) ---
@@ -429,53 +416,6 @@ void handle_move_item(int sockfd, char *payload) {
     }
 }
 
-// void handle_copy_file(int sockfd, char *payload) {
-//     char log_prefix[256];
-//     get_log_prefix(sockfd, log_prefix);
-
-//     char src_name[100], dest_name[100];
-//     sscanf(payload, "%s %s", src_name, dest_name);
-
-//     char log_msg[512];
-//     sprintf(log_msg, "%s requested COPY '%s' -> '%s'", log_prefix, src_name, dest_name);
-//     log_activity(log_msg);
-
-//     char src_path[256], dest_path[256];
-//     sprintf(src_path, "%s%s", FILE_STORAGE_PATH, src_name);
-//     sprintf(dest_path, "%s%s", FILE_STORAGE_PATH, dest_name);
-
-//     FILE *f_src = fopen(src_path, "rb");
-//     if (!f_src) {
-//         send_packet(sockfd, MSG_ERROR, "Source file not found", 21);
-//         sprintf(log_msg, "%s - COPY failed: Source not found", log_prefix);
-//         log_activity(log_msg);
-//         return;
-//     }
-
-//     FILE *f_dest = fopen(dest_path, "wb");
-//     if (!f_dest) {
-//         fclose(f_src);
-//         send_packet(sockfd, MSG_ERROR, "Cannot create dest file", 23);
-//         sprintf(log_msg, "%s - COPY failed: Cannot create dest file", log_prefix);
-//         log_activity(log_msg);
-//         return;
-//     }
-
-//     // Copy theo Chunk để tiết kiệm RAM
-//     char buffer[BUFFER_SIZE];
-//     size_t bytes_read;
-//     while ((bytes_read = fread(buffer, 1, sizeof(buffer), f_src)) > 0) {
-//         fwrite(buffer, 1, bytes_read, f_dest);
-//     }
-
-//     fclose(f_src);
-//     fclose(f_dest);
-
-//     send_packet(sockfd, MSG_SUCCESS, "Copy successful", 15);
-//     sprintf(log_msg, "%s - COPY success", log_prefix);
-//     log_activity(log_msg);
-// }
-
 // Nếu muốn làm thêm Tạo thư mục (Module 3 có yêu cầu)
 void handle_create_folder(int sockfd, char *foldername) {
     char log_prefix[256];
@@ -552,12 +492,14 @@ int remove_directory_recursive(const char *path) {
 int copy_single_file(const char *src_path, const char *dest_path) {
     FILE *f_src = fopen(src_path, "rb");
     if (!f_src) return -1;
+    flock(fileno(f_src), LOCK_SH);
 
     FILE *f_dest = fopen(dest_path, "wb");
     if (!f_dest) {
         fclose(f_src);
         return -1;
     }
+    flock(fileno(f_dest), LOCK_EX);
 
     char buffer[4096]; // Chunk 4KB
     size_t n;

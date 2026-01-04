@@ -25,6 +25,7 @@ obj/
 *.exe
 *.out
 *.app
+test.zip
 
 # ------------------------------------------------
 # 3. Runtime Data & Logs
