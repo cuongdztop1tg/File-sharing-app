@@ -272,6 +272,6 @@ void print_menu() {
     printf("4. LIST_GROUPS\n");
     printf("5. LOGOUT\n");
     printf("6. CHANGE_PASS <old> <new>\n");
-    printf("7. DELETE ACCOUNT <pass>\n");
+    printf("7. DELETE_ACCOUNT <pass>\n");
     printf("7. EXIT\n");
 }
