@@ -7,6 +7,7 @@
 void handle_login(int sockfd, char *payload);
 void handle_register(int sockfd, char *payload);
 void handle_logout(int sockfd, char *payload);
+void handle_change_password(int sockfd, char *payload);
 // void handle_create_group(int sockfd, char *payload); // Future implementation
 
 // Khai báo prototype cho Module 3 (File Handling)
@@ -33,6 +34,9 @@ void process_client_request(int sockfd, int msg_type, char *payload) {
         case MSG_LOGOUT:
             // TODO: Handle logout logic (update session)
             handle_logout(sockfd, payload);
+            break;
+        case MSG_CHANGE_PASS:
+            handle_change_password(sockfd, payload);
             break;
         
         // --- MODULE 3: FILE HANDLING ---

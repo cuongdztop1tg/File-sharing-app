@@ -163,6 +163,15 @@ void handle_user_input(int sockfd) {
         // Gửi yêu cầu logout, không cần payload
         send_packet(sockfd, MSG_LOGOUT, "", 0);
     }
+    else if (strcasecmp(command, "CHANGE_PASS") == 0) {
+        if (args < 3) {
+            printf("Usage: CHANGE_PASS <old_pass> <new_pass>\n");
+        } else {
+            char payload[256];
+            sprintf(payload, "%s %s", arg1, arg2);
+            send_packet(sockfd, MSG_CHANGE_PASS, payload, strlen(payload));
+        }
+    }
     else if (strcasecmp(command, "CREATE_GROUP") == 0) {
         if (args < 2) {
             printf("Usage: CREATE_GROUP <group_name>\n");
@@ -253,5 +262,6 @@ void print_menu() {
     printf("3. CREATE_GROUP <name>\n");
     printf("4. LIST_GROUPS\n");
     printf("5. LOGOUT\n");
-    printf("6. EXIT\n");
+    printf("6. CHANGE_PASS <old> <new>\n");
+    printf("7. EXIT\n");
 }

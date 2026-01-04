@@ -7,6 +7,7 @@
 // Forward declarations (should be in headers)
 int db_check_login(const char *username, const char *password);
 int db_register_user(const char *username, const char *password);
+int db_change_password(int user_id, const char *new_password);
 Session *find_session(int sockfd);
 void log_activity(const char *msg);
 
@@ -140,4 +141,42 @@ void handle_logout(int sockfd, char *payload) {
     char log_msg[200];
     sprintf(log_msg, "User '%s' (ID %d) logged out.", old_user, old_uid);
     log_activity(log_msg);
+}
+
+void handle_change_password(int sockfd, char *payload) {
+    Session *sess = find_session(sockfd);
+    
+    // 1. Kiểm tra đã login chưa
+    if (!sess || !sess->is_logged_in) {
+        send_packet(sockfd, MSG_ERROR, "Error: You must login first.", 50);
+        return;
+    }
+
+    char old_pass[50], new_pass[50];
+    
+    // 2. Parse payload: "old_pass new_pass"
+    if (sscanf(payload, "%s %s", old_pass, new_pass) < 2) {
+        send_packet(sockfd, MSG_ERROR, "Usage: CHANGE_PASS <old> <new>", 50);
+        return;
+    }
+
+    // 3. Xác thực mật khẩu cũ (Tận dụng hàm db_check_login có sẵn)
+    // db_check_login trả về ID nếu đúng user/pass
+    int check_id = db_check_login(sess->username, old_pass);
+    
+    if (check_id == sess->user_id) {
+        // 4. Nếu mật khẩu cũ đúng, tiến hành cập nhật
+        if (db_change_password(sess->user_id, new_pass) == 0) {
+            char msg[100];
+            sprintf(msg, "Password changed successfully for user '%s'.", sess->username);
+            send_packet(sockfd, MSG_SUCCESS, msg, strlen(msg));
+            
+            log_activity("User changed password successfully.");
+        } else {
+            send_packet(sockfd, MSG_ERROR, "Database error updating password.", 31);
+        }
+    } else {
+        send_packet(sockfd, MSG_ERROR, "Current password is incorrect.", 29);
+        log_activity("Failed password change attempt (wrong old pass).");
+    }
 }

@@ -64,3 +64,42 @@ int db_register_user(const char *username, const char *password) {
     fclose(f);
     return new_id;
 }
+
+/**
+ * @brief Đổi mật khẩu cho user ID tương ứng
+ * @return 0 nếu thành công, -1 nếu thất bại
+ */
+int db_change_password(int user_id, const char *new_password) {
+    FILE *f = fopen(USER_DB_FILE, "r");
+    FILE *temp = fopen("users.tmp", "w");
+    
+    if (!f || !temp) return -1;
+
+    int id;
+    char u[50], p[50];
+    int found = 0;
+
+    // Đọc từng dòng từ file cũ
+    while (fscanf(f, "%d %s %s", &id, u, p) != EOF) {
+        if (id == user_id) {
+            // Nếu khớp ID, ghi mật khẩu MỚI vào file tạm
+            fprintf(temp, "%d %s %s\n", id, u, new_password);
+            found = 1;
+        } else {
+            // Nếu không khớp, ghi lại dòng cũ
+            fprintf(temp, "%d %s %s\n", id, u, p);
+        }
+    }
+
+    fclose(f);
+    fclose(temp);
+
+    if (found) {
+        remove(USER_DB_FILE);       // Xóa file cũ
+        rename("users.tmp", USER_DB_FILE); // Đổi tên file tạm thành file chính
+        return 0;
+    } else {
+        remove("users.tmp");
+        return -1;
+    }
+}

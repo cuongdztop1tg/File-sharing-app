@@ -12,6 +12,7 @@ typedef enum {
     MSG_REGISTER,
     MSG_LOGIN,
     MSG_LOGOUT,
+    MSG_CHANGE_PASS, // Payload: "old_password new_password"
 
     // Group management
     MSG_CREATE_GROUP,
