@@ -7,6 +7,8 @@
 #include "protocol.h"
 #include "network.h"
 #include <unistd.h>
+#include <errno.h>
+#include <limits.h>
 
 #define FILE_STORAGE_PATH "./data/files/"
 
@@ -257,80 +259,222 @@ void handle_delete_item(int sockfd, char *filename) {
     }
 }
 
+// void handle_rename_item(int sockfd, char *payload) {
+//     char log_prefix[256];
+//     get_log_prefix(sockfd, log_prefix);
+//     char old_name[100], new_name[100];
+    
+//     // Giả sử client gửi "oldname newname" (tách nhau bằng khoảng trắng)
+//     // Nếu tên file có khoảng trắng, bạn cần xử lý tách chuỗi kỹ hơn.
+//     sscanf(payload, "%s %s", old_name, new_name);
+//     char log_msg[512];
+//     sprintf(log_msg, "%s requested RENAME/MOVE '%s' -> '%s'", log_prefix, old_name, new_name);
+//     log_activity(log_msg);
+
+//     char old_path[256], new_path[256];
+//     sprintf(old_path, "%s%s", FILE_STORAGE_PATH, old_name);
+//     sprintf(new_path, "%s%s", FILE_STORAGE_PATH, new_name);
+
+//     if (rename(old_path, new_path) == 0) {
+//         send_packet(sockfd, MSG_SUCCESS, "Rename successful", 17);
+//         sprintf(log_msg, "%s - RENAME success", log_prefix);
+//         log_activity(log_msg);
+//     } else {
+//         send_packet(sockfd, MSG_ERROR, "Rename failed", 13);
+//         sprintf(log_msg, "%s - RENAME failed", log_prefix);
+//         log_activity(log_msg);
+//     }
+// }
+
+
+// --- XỬ LÝ 1: RENAME (Đổi tên tại chỗ) ---
 void handle_rename_item(int sockfd, char *payload) {
     char log_prefix[256];
     get_log_prefix(sockfd, log_prefix);
+
     char old_name[100], new_name[100];
-    
-    // Giả sử client gửi "oldname newname" (tách nhau bằng khoảng trắng)
-    // Nếu tên file có khoảng trắng, bạn cần xử lý tách chuỗi kỹ hơn.
-    sscanf(payload, "%s %s", old_name, new_name);
+    if (sscanf(payload, "%s %s", old_name, new_name) < 2) {
+        send_packet(sockfd, MSG_ERROR, "Usage: RENAME <old> <new>", 25);
+        return;
+    }
+
     char log_msg[512];
-    sprintf(log_msg, "%s requested RENAME/MOVE '%s' -> '%s'", log_prefix, old_name, new_name);
+    sprintf(log_msg, "%s requested RENAME '%s' -> '%s'", log_prefix, old_name, new_name);
     log_activity(log_msg);
 
-    char old_path[256], new_path[256];
+    char old_path[512], new_path[512];
     sprintf(old_path, "%s%s", FILE_STORAGE_PATH, old_name);
     sprintf(new_path, "%s%s", FILE_STORAGE_PATH, new_name);
 
+    // 1. Check nguồn
+    if (access(old_path, F_OK) != 0) {
+        send_packet(sockfd, MSG_ERROR, "File/Folder not found", 21);
+        sprintf(log_msg, "%s - RENAME failed", log_prefix);
+        log_activity(log_msg);
+        return;
+    }
+
+    // 2. Check đích (Chặn ghi đè)
+    if (access(new_path, F_OK) == 0) {
+        send_packet(sockfd, MSG_ERROR, "New name already exists", 23);
+        sprintf(log_msg, "%s - RENAME failed", log_prefix);
+        log_activity(log_msg);
+        return;
+    }
+
+    // 3. Thực hiện
     if (rename(old_path, new_path) == 0) {
         send_packet(sockfd, MSG_SUCCESS, "Rename successful", 17);
         sprintf(log_msg, "%s - RENAME success", log_prefix);
         log_activity(log_msg);
     } else {
         send_packet(sockfd, MSG_ERROR, "Rename failed", 13);
+        // perror("Rename error");
         sprintf(log_msg, "%s - RENAME failed", log_prefix);
         log_activity(log_msg);
     }
 }
 
-
-void handle_copy_file(int sockfd, char *payload) {
+void handle_move_item(int sockfd, char *payload) {
     char log_prefix[256];
     get_log_prefix(sockfd, log_prefix);
 
-    char src_name[100], dest_name[100];
-    sscanf(payload, "%s %s", src_name, dest_name);
+    char src_name[100], dest_folder_input[100];
+    
+    // Payload: "nguồn  đích"
+    // Ví dụ 1: "myfolder  backup_folder" (Move folder vào folder)
+    // Ví dụ 2: "sub/file.txt  .."        (Move file ra ngoài 1 cấp so với thư mục sub)
+    if (sscanf(payload, "%s %s", src_name, dest_folder_input) < 2) {
+        send_packet(sockfd, MSG_ERROR, "Usage: MOVE <source> <dest_folder>", 32);
+        return;
+    }
 
-    char log_msg[512];
-    sprintf(log_msg, "%s requested COPY '%s' -> '%s'", log_prefix, src_name, dest_name);
-    log_activity(log_msg);
+    // 1. Dựng đường dẫn nguồn (Source Path)
+    char src_path[PATH_MAX];
+    snprintf(src_path, sizeof(src_path), "%s%s", FILE_STORAGE_PATH, src_name);
 
-    char src_path[256], dest_path[256];
-    sprintf(src_path, "%s%s", FILE_STORAGE_PATH, src_name);
-    sprintf(dest_path, "%s%s", FILE_STORAGE_PATH, dest_name);
+    // Kiểm tra nguồn tồn tại không
+    struct stat st_src;
+    if (stat(src_path, &st_src) != 0) {
+        send_packet(sockfd, MSG_ERROR, "Source not found", 16);
+        return;
+    }
 
-    FILE *f_src = fopen(src_path, "rb");
-    if (!f_src) {
-        send_packet(sockfd, MSG_ERROR, "Source file not found", 21);
-        sprintf(log_msg, "%s - COPY failed: Source not found", log_prefix);
+    // 2. Xử lý đường dẫn đích (Dest Path) & Hỗ trợ ".."
+    // Bước A: Tạo đường dẫn thô
+    char raw_dest_path[PATH_MAX];
+    snprintf(raw_dest_path, sizeof(raw_dest_path), "%s%s", FILE_STORAGE_PATH, dest_folder_input);
+
+    // Bước B: Dùng realpath để giải quyết các dấu ".." và "."
+    char resolved_dest_path[PATH_MAX];
+    char resolved_storage_root[PATH_MAX];
+
+    // Lấy đường dẫn tuyệt đối của thư mục gốc để so sánh bảo mật
+    if (realpath(FILE_STORAGE_PATH, resolved_storage_root) == NULL) {
+        perror("Server Error: Cannot resolve storage root");
+        return; 
+    }
+
+    // Lấy đường dẫn tuyệt đối của đích đến
+    if (realpath(raw_dest_path, resolved_dest_path) == NULL) {
+        // Nếu đích không tồn tại (realpath fail), báo lỗi ngay vì MOVE cần folder đích phải có trước
+        send_packet(sockfd, MSG_ERROR, "Destination folder not found or invalid", 37);
+        return;
+    }
+
+    // Bước C: BẢO MẬT - Chống Hack "Move ra ngoài Root"
+    // So sánh xem đường dẫn đích có bắt đầu bằng đường dẫn gốc không
+    if (strncmp(resolved_dest_path, resolved_storage_root, strlen(resolved_storage_root)) != 0) {
+        send_packet(sockfd, MSG_ERROR, "Access Denied: Cannot move out of storage root", 46);
+        char log_msg[512];
+        sprintf(log_msg, "%s - SECURITY ALERT: Attempted to move file outside root!", log_prefix);
         log_activity(log_msg);
         return;
     }
 
-    FILE *f_dest = fopen(dest_path, "wb");
-    if (!f_dest) {
-        fclose(f_src);
-        send_packet(sockfd, MSG_ERROR, "Cannot create dest file", 23);
-        sprintf(log_msg, "%s - COPY failed: Cannot create dest file", log_prefix);
-        log_activity(log_msg);
+    // 3. Tạo đường dẫn đích cuối cùng
+    // Logic: Đích cuối = Thư mục đích (đã resolve) + / + Tên file/folder nguồn
+    char *filename_only = strrchr(src_name, '/');
+    if (filename_only) filename_only++; // Lấy phần tên sau dấu / cuối cùng
+    else filename_only = src_name;
+
+    char final_dest_path[PATH_MAX];
+    snprintf(final_dest_path, sizeof(final_dest_path), "%s/%s", resolved_dest_path, filename_only);
+
+    // 4. Kiểm tra trùng tên tại đích
+    if (access(final_dest_path, F_OK) == 0) {
+        send_packet(sockfd, MSG_ERROR, "Item already exists in destination", 34);
         return;
     }
 
-    // Copy theo Chunk để tiết kiệm RAM
-    char buffer[BUFFER_SIZE];
-    size_t bytes_read;
-    while ((bytes_read = fread(buffer, 1, sizeof(buffer), f_src)) > 0) {
-        fwrite(buffer, 1, bytes_read, f_dest);
+    // 5. Thực hiện MOVE (Rename)
+    // Hàm rename() của C xử lý tốt cả File và Folder
+    if (rename(src_path, final_dest_path) == 0) {
+        send_packet(sockfd, MSG_SUCCESS, "Move successful", 15);
+        
+        char log_msg[512];
+        sprintf(log_msg, "%s - MOVE success: '%s' -> '%s'", log_prefix, src_name, dest_folder_input);
+        log_activity(log_msg);
+    } else {
+        // Xử lý lỗi cụ thể
+        if (errno == EINVAL) {
+            // Lỗi này xảy ra khi cố move Folder Cha vào Folder Con của chính nó
+            send_packet(sockfd, MSG_ERROR, "Invalid move: Cannot move folder into itself", 44);
+        } else if (errno == EXDEV) {
+            send_packet(sockfd, MSG_ERROR, "Cannot move across different disk partitions", 44);
+        } else {
+            send_packet(sockfd, MSG_ERROR, "Move failed (System Error)", 26);
+            perror("Move Error");
+        }
     }
-
-    fclose(f_src);
-    fclose(f_dest);
-
-    send_packet(sockfd, MSG_SUCCESS, "Copy successful", 15);
-    sprintf(log_msg, "%s - COPY success", log_prefix);
-    log_activity(log_msg);
 }
+
+// void handle_copy_file(int sockfd, char *payload) {
+//     char log_prefix[256];
+//     get_log_prefix(sockfd, log_prefix);
+
+//     char src_name[100], dest_name[100];
+//     sscanf(payload, "%s %s", src_name, dest_name);
+
+//     char log_msg[512];
+//     sprintf(log_msg, "%s requested COPY '%s' -> '%s'", log_prefix, src_name, dest_name);
+//     log_activity(log_msg);
+
+//     char src_path[256], dest_path[256];
+//     sprintf(src_path, "%s%s", FILE_STORAGE_PATH, src_name);
+//     sprintf(dest_path, "%s%s", FILE_STORAGE_PATH, dest_name);
+
+//     FILE *f_src = fopen(src_path, "rb");
+//     if (!f_src) {
+//         send_packet(sockfd, MSG_ERROR, "Source file not found", 21);
+//         sprintf(log_msg, "%s - COPY failed: Source not found", log_prefix);
+//         log_activity(log_msg);
+//         return;
+//     }
+
+//     FILE *f_dest = fopen(dest_path, "wb");
+//     if (!f_dest) {
+//         fclose(f_src);
+//         send_packet(sockfd, MSG_ERROR, "Cannot create dest file", 23);
+//         sprintf(log_msg, "%s - COPY failed: Cannot create dest file", log_prefix);
+//         log_activity(log_msg);
+//         return;
+//     }
+
+//     // Copy theo Chunk để tiết kiệm RAM
+//     char buffer[BUFFER_SIZE];
+//     size_t bytes_read;
+//     while ((bytes_read = fread(buffer, 1, sizeof(buffer), f_src)) > 0) {
+//         fwrite(buffer, 1, bytes_read, f_dest);
+//     }
+
+//     fclose(f_src);
+//     fclose(f_dest);
+
+//     send_packet(sockfd, MSG_SUCCESS, "Copy successful", 15);
+//     sprintf(log_msg, "%s - COPY success", log_prefix);
+//     log_activity(log_msg);
+// }
 
 // Nếu muốn làm thêm Tạo thư mục (Module 3 có yêu cầu)
 void handle_create_folder(int sockfd, char *foldername) {
@@ -403,4 +547,163 @@ int remove_directory_recursive(const char *path) {
     if (!r)
         r = rmdir(path); // Cuối cùng xóa thư mục rỗng
     return r;
+}
+
+int copy_single_file(const char *src_path, const char *dest_path) {
+    FILE *f_src = fopen(src_path, "rb");
+    if (!f_src) return -1;
+
+    FILE *f_dest = fopen(dest_path, "wb");
+    if (!f_dest) {
+        fclose(f_src);
+        return -1;
+    }
+
+    char buffer[4096]; // Chunk 4KB
+    size_t n;
+    while ((n = fread(buffer, 1, sizeof(buffer), f_src)) > 0) {
+        if (fwrite(buffer, 1, n, f_dest) != n) {
+            fclose(f_src);
+            fclose(f_dest);
+            return -1; // Lỗi ghi đĩa đầy hoặc lỗi io
+        }
+    }
+
+    fclose(f_src);
+    fclose(f_dest);
+    return 0; // Success
+}
+
+// Hàm đệ quy: Copy folder và toàn bộ nội dung
+int copy_recursive(const char *src, const char *dest) {
+    struct stat st;
+    if (stat(src, &st) != 0) return -1;
+
+    // 1. Nếu là File -> Copy file thường
+    if (S_ISREG(st.st_mode)) {
+        return copy_single_file(src, dest);
+    }
+
+    // 2. Nếu là Folder -> Tạo folder đích và đệ quy
+    if (S_ISDIR(st.st_mode)) {
+        // Tạo folder đích (Linux: 0755, Win: _mkdir)
+        #ifdef _WIN32
+            _mkdir(dest);
+        #else
+            mkdir(dest, 0755);
+        #endif
+
+        DIR *d = opendir(src);
+        if (!d) return -1;
+
+        struct dirent *entry;
+        while ((entry = readdir(d)) != NULL) {
+            // Bỏ qua . và ..
+            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+                continue;
+
+            char next_src[PATH_MAX];
+            char next_dest[PATH_MAX];
+
+            snprintf(next_src, sizeof(next_src), "%s/%s", src, entry->d_name);
+            snprintf(next_dest, sizeof(next_dest), "%s/%s", dest, entry->d_name);
+
+            // Gọi đệ quy
+            copy_recursive(next_src, next_dest);
+        }
+        closedir(d);
+        return 0;
+    }
+    return -1; // Không phải file/folder (VD: symlink, device...)
+}
+
+
+// --- XỬ LÝ 3: COPY (Đệ quy & An toàn) ---
+void handle_copy_file(int sockfd, char *payload) {
+    char log_prefix[256];
+    get_log_prefix(sockfd, log_prefix);
+
+    char src_name[100], dest_input[100];
+    // Payload: "nguồn  đích"
+    if (sscanf(payload, "%s %s", src_name, dest_input) < 2) {
+        send_packet(sockfd, MSG_ERROR, "Usage: COPY <source> <dest_path>", 30);
+        return;
+    }
+
+    // 1. Resolve Source Path
+    char src_path[PATH_MAX];
+    snprintf(src_path, sizeof(src_path), "%s%s", FILE_STORAGE_PATH, src_name);
+
+    struct stat st_src;
+    if (stat(src_path, &st_src) != 0) {
+        send_packet(sockfd, MSG_ERROR, "Source not found", 16);
+        return;
+    }
+
+    // 2. Resolve Destination Path
+    char raw_dest_base[PATH_MAX];
+    snprintf(raw_dest_base, sizeof(raw_dest_base), "%s%s", FILE_STORAGE_PATH, dest_input);
+
+    char final_dest_path[PATH_MAX];
+    struct stat st_dest;
+
+    // Logic xác định đích đến cuối cùng
+    if (stat(raw_dest_base, &st_dest) == 0 && S_ISDIR(st_dest.st_mode)) {
+        // Nếu đích là Folder có sẵn -> Copy vào bên trong nó
+        char *filename_only = strrchr(src_name, '/');
+        if (filename_only) filename_only++; 
+        else filename_only = src_name;
+        
+        snprintf(final_dest_path, sizeof(final_dest_path), "%s/%s", raw_dest_base, filename_only);
+    } else {
+        // Đích chưa tồn tại (Rename copy) hoặc là file
+        strcpy(final_dest_path, raw_dest_base);
+    }
+
+    // 3. Bảo mật: Chống hack ".."
+    char resolved_storage_root[PATH_MAX];
+    realpath(FILE_STORAGE_PATH, resolved_storage_root);
+    
+    // [FIX]: Đã xóa dòng 'char resolved_final_dest[PATH_MAX];' gây warning ở đây
+    
+    // Kiểm tra nhanh xem user có dùng ".." để leo ra ngoài không
+    if (strstr(dest_input, "..")) {
+         send_packet(sockfd, MSG_ERROR, "Security Violation: '..' not allowed", 32);
+         return;
+    }
+
+    // 4. NGOẠI LỆ 1: Check Trùng Lặp
+    if (access(final_dest_path, F_OK) == 0) {
+        send_packet(sockfd, MSG_ERROR, "Destination already exists (No Overwrite)", 40);
+        return;
+    }
+
+    // 5. NGOẠI LỆ 2: Copy Folder vào con của chính nó (Infinite Loop)
+    char resolved_src[PATH_MAX];
+    if (realpath(src_path, resolved_src)) {
+        char abs_dest[PATH_MAX];
+        // Giả lập đường dẫn tuyệt đối của đích
+        snprintf(abs_dest, sizeof(abs_dest), "%s/%s", resolved_storage_root, dest_input);
+        
+        // Nếu đường dẫn đích bắt đầu bằng đường dẫn nguồn -> Lỗi
+        if (strncmp(abs_dest, resolved_src, strlen(resolved_src)) == 0) {
+             send_packet(sockfd, MSG_ERROR, "Cannot copy folder into its own subdirectory", 43);
+             return;
+        }
+    }
+
+    // 6. Thực hiện Copy
+    char log_msg[512];
+    sprintf(log_msg, "%s requesting COPY '%s' -> '%s'", log_prefix, src_name, dest_input);
+    log_activity(log_msg);
+
+    if (copy_recursive(src_path, final_dest_path) == 0) {
+        send_packet(sockfd, MSG_SUCCESS, "Copy successful", 15);
+        sprintf(log_msg, "%s - COPY success", log_prefix);
+        log_activity(log_msg);
+    } else {
+        send_packet(sockfd, MSG_ERROR, "Copy failed (IO Error)", 22);
+        sprintf(log_msg, "%s - COPY failed", log_prefix);
+        log_activity(log_msg);
+    }
 }

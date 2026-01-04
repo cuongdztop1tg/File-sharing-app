@@ -16,6 +16,7 @@ void handle_delete_item(int sockfd, char *filename);
 void handle_create_folder(int sockfd, char *foldername);
 void handle_copy_file(int sockfd, char *payload);
 void handle_rename_item(int sockfd, char *payload);
+void handle_move_item(int sockfd, char *payload); 
 // --------------------------
 
 void process_client_request(int sockfd, int msg_type, char *payload) {
@@ -52,9 +53,7 @@ void process_client_request(int sockfd, int msg_type, char *payload) {
             handle_rename_item(sockfd, payload);
             break;
         case MSG_MOVE_ITEM:
-            // Move bản chất là Rename sang đường dẫn mới
-            // Tận dụng luôn hàm handle_rename_item
-            handle_rename_item(sockfd, payload);
+            handle_move_item(sockfd, payload);
             break;
         case MSG_COPY_ITEM:
             handle_copy_file(sockfd, payload);
