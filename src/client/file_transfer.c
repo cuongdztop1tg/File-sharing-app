@@ -65,7 +65,7 @@ void download_file(int sockfd, char *filename) {
 
     // 2. Chờ phản hồi từ Server
     int msg_type;
-    char buffer[BUFFER_SIZE];
+    char buffer[BUFFER_SIZE + 1];
     int payload_len = recv_packet(sockfd, &msg_type, buffer);
 
     if (msg_type == MSG_ERROR) {
@@ -73,15 +73,23 @@ void download_file(int sockfd, char *filename) {
         return;
     }
 
+    char *save_name = strrchr(filename, '/');
+    if (save_name) {
+        save_name++; // Bỏ qua dấu '/'
+    } else {
+        save_name = filename; // Không có dấu '/' thì dùng nguyên tên
+    }
+
     // Server đồng ý, payload chứa filesize (nếu cần dùng)
     printf("[INFO] Downloading '%s' from Server...\n", filename);
 
-    // 3. Mở file để ghi
-    FILE *f = fopen(filename, "wb"); // Lưu ngay tại thư mục hiện tại của Client
+    // 3. Mở file để ghi (Dùng save_name thay vì filename gốc)
+    FILE *f = fopen(save_name, "wb"); 
     if (!f) {
-        printf("[ERROR] Cannot write file locally.\n");
+        printf("[ERROR] Cannot write file '%s' locally. Check permissions.\n", save_name);
         return;
     }
+
 
     long total_received = 0;
     

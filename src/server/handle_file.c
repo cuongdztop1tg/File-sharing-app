@@ -191,24 +191,42 @@ void handle_download_request(int sockfd, char *filename) {
     char filepath[256];
     sprintf(filepath, "%s%s", FILE_STORAGE_PATH, filename);
 
-    FILE *f = fopen(filepath, "rb");
-    if (!f) {
+    // 1. Kiểm tra sự tồn tại và loại file (File hay Folder)
+    struct stat st;
+    if (stat(filepath, &st) != 0) {
         char *err = "File not found.";
         send_packet(sockfd, MSG_ERROR, err, strlen(err));
-
         sprintf(log_msg, "%s - DOWNLOAD failed: File not found", log_prefix);
         log_activity(log_msg);
         return;
     }
 
+    if (S_ISDIR(st.st_mode)) {
+        char *err = "Cannot download a folder directly.";
+        send_packet(sockfd, MSG_ERROR, err, strlen(err));
+        sprintf(log_msg, "%s - DOWNLOAD failed: Target is a directory", log_prefix);
+        log_activity(log_msg);
+        return;
+    }
+
+    // 2. Mở file để đọc
+    FILE *f = fopen(filepath, "rb");
+    if (!f) {
+        char *err = "Access denied or file locked.";
+        send_packet(sockfd, MSG_ERROR, err, strlen(err));
+        sprintf(log_msg, "%s - DOWNLOAD failed: Cannot open file", log_prefix);
+        log_activity(log_msg);
+        return;
+    }
+    // Khóa Shared (Cho phép nhiều người cùng download, nhưng chặn ai đó đang ghi/xóa)
     int fd = fileno(f);
     if (flock(fd, LOCK_SH) != 0) { // LOCK_SH: Shared Lock (Nhiều người được đọc)
     // Nếu file đang bị khóa bởi LOCK_EX (đang có người upload/sửa), lệnh này sẽ đợi
     }
 
     // 1. Gửi thông báo chấp nhận Download + Kích thước file (để Client hiện thanh tiến trình nếu muốn)
-    struct stat st;
-    stat(filepath, &st);
+    // struct stat st;
+    // stat(filepath, &st);
     long filesize = st.st_size;
     
     char msg[100];
