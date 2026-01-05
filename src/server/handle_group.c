@@ -396,20 +396,67 @@ void handle_kick_member(int sockfd, char *payload)
 
 void handle_invite_member(int sockfd, char *payload)
 {
-    // Session *s = find_session(sockfd);
-    // For simplicity, invite works like an auto-approved join request
+    Session *s = find_session(sockfd);
     int group_id, target_id;
     sscanf(payload, "%d %d", &group_id, &target_id);
 
-    GroupMemberInfo new_m = {group_id, target_id, 1}; // 1 = Approved
+    // 1. Check group owner and requester membership
+    GroupInfo groups[256];
+    int g_count = db_read_groups(groups, 256);
+    int is_owner = 0;
+
+    for (int i = 0; i < g_count; i++)
+    {
+        if (groups[i].group_id == group_id)
+        {
+            if (groups[i].owner_id == s->user_id)
+                is_owner = 1;
+            break;
+        }
+    }
+
+    GroupMemberInfo members[512];
+    int m_count = db_read_group_members(members, 512);
+    int is_member = 0;
+    for (int i = 0; i < m_count; i++)
+    {
+        if (members[i].group_id == group_id && members[i].user_id == s->user_id && members[i].status == 1)
+        {
+            is_member = 1;
+            break;
+        }
+    }
+
+    if (!is_owner && !is_member)
+    {
+        char log_prefix[256];
+        get_group_log_prefix(sockfd, log_prefix);
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "%s attempted to invite user %d to group %d (not owner nor member)", log_prefix, target_id, group_id);
+        log_activity(log_msg);
+        send_packet(sockfd, MSG_ERROR, "Only group members or owner can invite", 37);
+        return;
+    }
+
+    GroupMemberInfo new_m = {group_id, target_id, is_owner ? 1 : 0}; // 1=Approved, 0=Pending
+
     if (db_write_group_member(&new_m) == 0)
     {
         char log_prefix[256];
         get_group_log_prefix(sockfd, log_prefix);
         char log_msg[512];
-        snprintf(log_msg, sizeof(log_msg), "%s invited user %d to group %d", log_prefix, target_id, group_id);
-        log_activity(log_msg);
-        send_packet(sockfd, MSG_SUCCESS, "User invited and added", 22);
+        if (is_owner)
+        {
+            snprintf(log_msg, sizeof(log_msg), "%s (owner) invited and added user %d to group %d", log_prefix, target_id, group_id);
+            log_activity(log_msg);
+            send_packet(sockfd, MSG_SUCCESS, "User invited and added", 22);
+        }
+        else if (is_member)
+        {
+            snprintf(log_msg, sizeof(log_msg), "%s (member) invited user %d to group %d (pending approval)", log_prefix, target_id, group_id);
+            log_activity(log_msg);
+            send_packet(sockfd, MSG_SUCCESS, "User invited, pending approval", 28);
+        }
     }
     else
     {
