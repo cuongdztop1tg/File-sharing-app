@@ -12,6 +12,7 @@
 // Khai báo hàm để hàm bên dưới gọi
 Session *find_session(int sockfd);
 void log_activity(const char *msg);
+int remove_directory_recursive(const char *path); // From handle_file.c
 
 // Helper function to get log prefix with user info
 void get_group_log_prefix(int sockfd, char *buffer)
@@ -483,5 +484,137 @@ void handle_invite_member(int sockfd, char *payload)
         snprintf(log_msg, sizeof(log_msg), "%s failed to invite user %d to group %d", log_prefix, target_id, group_id);
         log_activity(log_msg);
         send_packet(sockfd, MSG_ERROR, "Invite failed", 13);
+    }
+}
+
+void handle_delete_group(int sockfd, char *payload)
+{
+    Session *s = find_session(sockfd);
+    if (!s || !s->is_logged_in)
+    {
+        send_packet(sockfd, MSG_ERROR, "Login required", 14);
+        return;
+    }
+
+    int group_id = atoi(payload);
+    if (group_id <= 0)
+    {
+        send_packet(sockfd, MSG_ERROR, "Invalid group ID", 16);
+        return;
+    }
+
+    // 1. Check if user is the owner of this group
+    GroupInfo groups[256];
+    int g_count = db_read_groups(groups, 256);
+    int is_owner = 0;
+    int group_exists = 0;
+    char group_name[64] = "";
+
+    for (int i = 0; i < g_count; i++)
+    {
+        if (groups[i].group_id == group_id)
+        {
+            group_exists = 1;
+            strncpy(group_name, groups[i].name, 63);
+            if (groups[i].owner_id == s->user_id)
+            {
+                is_owner = 1;
+            }
+            break;
+        }
+    }
+
+    if (!group_exists)
+    {
+        char log_prefix[256];
+        get_group_log_prefix(sockfd, log_prefix);
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "%s attempted to delete group %d (group not found)", log_prefix, group_id);
+        log_activity(log_msg);
+        send_packet(sockfd, MSG_ERROR, "Group not found", 15);
+        return;
+    }
+
+    if (!is_owner)
+    {
+        char log_prefix[256];
+        get_group_log_prefix(sockfd, log_prefix);
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "%s attempted to delete group %d (not owner)", log_prefix, group_id);
+        log_activity(log_msg);
+        send_packet(sockfd, MSG_ERROR, "Only owner can delete the group", 30);
+        return;
+    }
+
+    // 2. Remove all members from group_members.txt
+    GroupMemberInfo members[512];
+    int m_count = db_read_group_members(members, 512);
+    FILE *f_members = fopen("./data/group_members.txt", "w");
+    if (!f_members)
+    {
+        char log_prefix[256];
+        get_group_log_prefix(sockfd, log_prefix);
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "%s failed to delete group %d (cannot open group_members.txt)", log_prefix, group_id);
+        log_activity(log_msg);
+        send_packet(sockfd, MSG_ERROR, "Failed to delete group (database error)", 36);
+        return;
+    }
+    for (int i = 0; i < m_count; i++)
+    {
+        if (members[i].group_id != group_id)
+        {
+            fprintf(f_members, "%d %d %d\n", members[i].group_id, members[i].user_id, members[i].status);
+        }
+    }
+    fclose(f_members);
+
+    // 3. Remove the group from groups.txt
+    FILE *f_groups = fopen("./data/groups.txt", "w");
+    if (!f_groups)
+    {
+        char log_prefix[256];
+        get_group_log_prefix(sockfd, log_prefix);
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "%s failed to delete group %d (cannot open groups.txt)", log_prefix, group_id);
+        log_activity(log_msg);
+        send_packet(sockfd, MSG_ERROR, "Failed to delete group (database error)", 36);
+        return;
+    }
+    for (int i = 0; i < g_count; i++)
+    {
+        if (groups[i].group_id != group_id)
+        {
+            fprintf(f_groups, "%d %s %d\n", groups[i].group_id, groups[i].name, groups[i].owner_id);
+        }
+    }
+    fclose(f_groups);
+
+    // 4. Delete the group directory
+    char dir_path[256];
+    snprintf(dir_path, sizeof(dir_path), "./data/Group_%d", group_id);
+    errno = 0; // Clear errno before call
+    int dir_res = remove_directory_recursive(dir_path);
+    int saved_errno = errno; // Save errno immediately after call
+
+    if (dir_res == 0 || saved_errno == ENOENT) // ENOENT means directory doesn't exist, which is fine
+    {
+        char log_prefix[256];
+        get_group_log_prefix(sockfd, log_prefix);
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "%s deleted group '%s' (ID: %d)", log_prefix, group_name, group_id);
+        log_activity(log_msg);
+        send_packet(sockfd, MSG_SUCCESS, "Group deleted successfully", 25);
+    }
+    else
+    {
+        // Group and members are already removed from DB, but directory deletion failed
+        // Log warning but still report success since DB cleanup succeeded
+        char log_prefix[256];
+        get_group_log_prefix(sockfd, log_prefix);
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "%s deleted group '%s' (ID: %d) but directory deletion failed", log_prefix, group_name, group_id);
+        log_activity(log_msg);
+        send_packet(sockfd, MSG_SUCCESS, "Group deleted (directory cleanup warning)", 42);
     }
 }

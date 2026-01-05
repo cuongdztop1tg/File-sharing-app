@@ -49,7 +49,7 @@ create_dirs:
 
 # Dọn dẹp file biên dịch cũ (Gõ 'make clean')
 clean:
-	rm -rf $(BIN_DIR)/*
+	rm -rf $(BIN_DIR)
 
 # Chạy thử Server nhanh (Gõ 'make run_server')
 run_server: server

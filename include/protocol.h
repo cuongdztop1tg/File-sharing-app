@@ -13,7 +13,7 @@ typedef enum
     MSG_REGISTER,
     MSG_LOGIN,
     MSG_LOGOUT,
-    MSG_CHANGE_PASS, // Payload: "old_password new_password"
+    MSG_CHANGE_PASS,    // Payload: "old_password new_password"
     MSG_DELETE_ACCOUNT, // Payload: "password_confirm"
 
     // Group management
@@ -25,6 +25,7 @@ typedef enum
     MSG_KICK_MEMBER,
     MSG_INVITE_MEMBER,
     MSG_APPROVE_MEMBER,
+    MSG_DELETE_GROUP,
 
     // File system
     // MSG_LIST_FILES,
