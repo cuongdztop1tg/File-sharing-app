@@ -228,235 +228,233 @@ void handle_user_input(int sockfd)
             send_packet(sockfd, MSG_CREATE_GROUP, arg1, strlen(arg1));
         }
     }
-    else if (strcasecmp(command, "LIST_GROUPS") == 0)
+    else if (strcasecmp(command, "DELETE_GROUP") == 0)
     {
-        else if (strcasecmp(command, "DELETE_GROUP") == 0)
+        if (args < 2)
         {
-            if (args < 2)
-            {
-                printf("Usage: DELETE_GROUP <group_id>\n");
-            }
-            else
-            {
-                send_packet(sockfd, MSG_DELETE_GROUP, arg1, strlen(arg1));
-            }
+            printf("Usage: DELETE_GROUP <group_id>\n");
         }
-        else if (strcasecmp(command, "LIST_GROUPS") == 0)
-        {
-            send_packet(sockfd, MSG_LIST_GROUPS, "", 0);
-        }
-        // Join an existing group
-        else if (strcasecmp(command, "JOIN_GROUP") == 0)
-        {
-            if (args < 2)
-            {
-                printf("Usage: JOIN_GROUP <group_id>\n");
-            }
-            else
-            {
-                send_packet(sockfd, MSG_JOIN_GROUP, arg1, strlen(arg1));
-            }
-        }
-        // Leave a group
-        else if (strcasecmp(command, "LEAVE_GROUP") == 0)
-        {
-            if (args < 2)
-            {
-                printf("Usage: LEAVE_GROUP <group_id>\n");
-            }
-            else
-            {
-                send_packet(sockfd, MSG_LEAVE_GROUP, arg1, strlen(arg1));
-            }
-        }
-        // List members of a group
-        else if (strcasecmp(command, "LIST_MEMBERS") == 0)
-        {
-            if (args < 2)
-            {
-                printf("Usage: LIST_MEMBERS <group_id>\n");
-            }
-            else
-            {
-                send_packet(sockfd, MSG_LIST_MEMBERS, arg1, strlen(arg1));
-            }
-        }
-        // Kick a member from a group
-        else if (strcasecmp(command, "KICK_MEMBER") == 0)
-        {
-            if (args < 3)
-            {
-                printf("Usage: KICK_MEMBER <group_id> <user_id>\n");
-            }
-            else
-            {
-                char payload[256];
-                sprintf(payload, "%s %s", arg1, arg2);
-                send_packet(sockfd, MSG_KICK_MEMBER, payload, strlen(payload));
-            }
-        }
-        // Invite a user to a group
-        else if (strcasecmp(command, "INVITE_MEMBER") == 0)
-        {
-            if (args < 3)
-            {
-                printf("Usage: INVITE_MEMBER <group_id> <user_id>\n");
-            }
-            else
-            {
-                char payload[256];
-                sprintf(payload, "%s %s", arg1, arg2);
-                send_packet(sockfd, MSG_INVITE_MEMBER, payload, strlen(payload));
-            }
-        }
-        // Approve a user's group join request
-        else if (strcasecmp(command, "APPROVE_MEMBER") == 0)
-        {
-            if (args < 3)
-            {
-                printf("Usage: APPROVE_MEMBER <group_id> <user_id>\n");
-            }
-            else
-            {
-                char payload[256];
-                sprintf(payload, "%s %s", arg1, arg2);
-                send_packet(sockfd, MSG_APPROVE_MEMBER, payload, strlen(payload));
-            }
-        }
-        // Delete a group (owner only)
-        else if (strcasecmp(command, "DELETE_GROUP") == 0)
-        {
-            if (args < 2)
-            {
-                printf("Usage: DELETE_GROUP <group_id>\n");
-            }
-            else
-            {
-                send_packet(sockfd, MSG_DELETE_GROUP, arg1, strlen(arg1));
-            }
-        }
-
-        // --- FILE MANAGEMENT COMMANDS ---
-        // List files/folders (with optional path arg)
-        else if (strcasecmp(command, "LIST") == 0)
-        {
-            // If user types "LIST subfolder" (args = 2) -> Send "subfolder"
-            if (args >= 2)
-            {
-                send_packet(sockfd, MSG_LIST_FILES, arg1, strlen(arg1));
-            }
-            // Nếu user chỉ gõ "LIST" -> Gửi chuỗi rỗng ""
-            else
-            {
-                send_packet(sockfd, MSG_LIST_FILES, "", 0);
-            }
-        }
-        // Upload file to server
-        else if (strcasecmp(command, "UPLOAD") == 0)
-        {
-            if (args < 2)
-            {
-                printf("Usage: UPLOAD <filename>\n");
-            }
-            else
-            {
-                upload_file(sockfd, arg1);
-            }
-        }
-        // Download file from server
-        else if (strcasecmp(command, "DOWNLOAD") == 0)
-        {
-            if (args < 2)
-            {
-                printf("Usage: DOWNLOAD <filename>\n");
-            }
-            else
-            {
-                download_file(sockfd, arg1);
-            }
-        }
-        // Delete a file or folder
-        else if (strcasecmp(command, "DELETE") == 0)
-        {
-            if (args < 2)
-            {
-                printf("Usage: DELETE <filename>\n");
-            }
-            else
-            {
-                send_packet(sockfd, MSG_DELETE_ITEM, arg1, strlen(arg1));
-            }
-        }
-        // 1. Lệnh Tạo thư mục
-        else if (strcasecmp(command, "MKDIR") == 0)
-        {
-            if (args < 2)
-            {
-                printf("Usage: MKDIR <foldername>\n");
-            }
-            else
-            {
-                send_packet(sockfd, MSG_CREATE_FOLDER, arg1, strlen(arg1));
-            }
-        }
-        // 2. Lệnh Đổi tên (File hoặc Folder)
-        else if (strcasecmp(command, "RENAME") == 0)
-        {
-            if (args < 3)
-            {
-                printf("Usage: RENAME <old_name> <new_name>\n");
-            }
-            else
-            {
-                char payload[256];
-                sprintf(payload, "%s %s", arg1, arg2); // Gộp 2 tham số thành chuỗi payload
-                send_packet(sockfd, MSG_RENAME_ITEM, payload, strlen(payload));
-            }
-        }
-        // 3. Lệnh Copy File
-        else if (strcasecmp(command, "COPY") == 0)
-        {
-            if (args < 3)
-            {
-                printf("Usage: COPY <source_file> <dest_file>\n");
-            }
-            else
-            {
-                char payload[256];
-                sprintf(payload, "%s %s", arg1, arg2);
-                send_packet(sockfd, MSG_COPY_ITEM, payload, strlen(payload));
-            }
-        }
-        // 4. Lệnh Di chuyển (Move)
-        else if (strcasecmp(command, "MOVE") == 0)
-        {
-            if (args < 3)
-            {
-                printf("Usage: MOVE <source> <dest>\n");
-            }
-            else
-            {
-                char payload[256];
-                sprintf(payload, "%s %s", arg1, arg2);
-                send_packet(sockfd, MSG_MOVE_ITEM, payload, strlen(payload));
-            }
-        }
-        // Add more commands here...
         else
         {
-            printf("Unknown command. Type 'HELP' for menu.\n");
+            send_packet(sockfd, MSG_DELETE_GROUP, arg1, strlen(arg1));
+        }
+    }
+    else if (strcasecmp(command, "LIST_GROUPS") == 0)
+    {
+        send_packet(sockfd, MSG_LIST_GROUPS, "", 0);
+    }
+    // Join an existing group
+    else if (strcasecmp(command, "JOIN_GROUP") == 0)
+    {
+        if (args < 2)
+        {
+            printf("Usage: JOIN_GROUP <group_id>\n");
+        }
+        else
+        {
+            send_packet(sockfd, MSG_JOIN_GROUP, arg1, strlen(arg1));
+        }
+    }
+    // Leave a group
+    else if (strcasecmp(command, "LEAVE_GROUP") == 0)
+    {
+        if (args < 2)
+        {
+            printf("Usage: LEAVE_GROUP <group_id>\n");
+        }
+        else
+        {
+            send_packet(sockfd, MSG_LEAVE_GROUP, arg1, strlen(arg1));
+        }
+    }
+    // List members of a group
+    else if (strcasecmp(command, "LIST_MEMBERS") == 0)
+    {
+        if (args < 2)
+        {
+            printf("Usage: LIST_MEMBERS <group_id>\n");
+        }
+        else
+        {
+            send_packet(sockfd, MSG_LIST_MEMBERS, arg1, strlen(arg1));
+        }
+    }
+    // Kick a member from a group
+    else if (strcasecmp(command, "KICK_MEMBER") == 0)
+    {
+        if (args < 3)
+        {
+            printf("Usage: KICK_MEMBER <group_id> <user_id>\n");
+        }
+        else
+        {
+            char payload[256];
+            sprintf(payload, "%s %s", arg1, arg2);
+            send_packet(sockfd, MSG_KICK_MEMBER, payload, strlen(payload));
+        }
+    }
+    // Invite a user to a group
+    else if (strcasecmp(command, "INVITE_MEMBER") == 0)
+    {
+        if (args < 3)
+        {
+            printf("Usage: INVITE_MEMBER <group_id> <user_id>\n");
+        }
+        else
+        {
+            char payload[256];
+            sprintf(payload, "%s %s", arg1, arg2);
+            send_packet(sockfd, MSG_INVITE_MEMBER, payload, strlen(payload));
+        }
+    }
+    // Approve a user's group join request
+    else if (strcasecmp(command, "APPROVE_MEMBER") == 0)
+    {
+        if (args < 3)
+        {
+            printf("Usage: APPROVE_MEMBER <group_id> <user_id>\n");
+        }
+        else
+        {
+            char payload[256];
+            sprintf(payload, "%s %s", arg1, arg2);
+            send_packet(sockfd, MSG_APPROVE_MEMBER, payload, strlen(payload));
+        }
+    }
+    // Delete a group (owner only)
+    else if (strcasecmp(command, "DELETE_GROUP") == 0)
+    {
+        if (args < 2)
+        {
+            printf("Usage: DELETE_GROUP <group_id>\n");
+        }
+        else
+        {
+            send_packet(sockfd, MSG_DELETE_GROUP, arg1, strlen(arg1));
         }
     }
 
-    void print_menu()
+    // --- FILE MANAGEMENT COMMANDS ---
+    // List files/folders (with optional path arg)
+    else if (strcasecmp(command, "LIST") == 0)
     {
-        printf("--- COMMAND MENU ---\n");
-        printf("1. LOGIN <user> <pass>\n");
-        printf("2. REGISTER <user> <pass>\n");
-        printf("3. CREATE_GROUP <name>\n");
-        printf("4. LIST_GROUPS\n");
-        printf("5. LOGOUT\n");
-        printf("6. CHANGE_PASS <old> <new>\n");
-        printf("7. DELETE_ACCOUNT <pass>\n");
-        printf("7. EXIT\n");
+        // If user types "LIST subfolder" (args = 2) -> Send "subfolder"
+        if (args >= 2)
+        {
+            send_packet(sockfd, MSG_LIST_FILES, arg1, strlen(arg1));
+        }
+        // Nếu user chỉ gõ "LIST" -> Gửi chuỗi rỗng ""
+        else
+        {
+            send_packet(sockfd, MSG_LIST_FILES, "", 0);
+        }
     }
+    // Upload file to server
+    else if (strcasecmp(command, "UPLOAD") == 0)
+    {
+        if (args < 2)
+        {
+            printf("Usage: UPLOAD <filename>\n");
+        }
+        else
+        {
+            upload_file(sockfd, arg1);
+        }
+    }
+    // Download file from server
+    else if (strcasecmp(command, "DOWNLOAD") == 0)
+    {
+        if (args < 2)
+        {
+            printf("Usage: DOWNLOAD <filename>\n");
+        }
+        else
+        {
+            download_file(sockfd, arg1);
+        }
+    }
+    // Delete a file or folder
+    else if (strcasecmp(command, "DELETE") == 0)
+    {
+        if (args < 2)
+        {
+            printf("Usage: DELETE <filename>\n");
+        }
+        else
+        {
+            send_packet(sockfd, MSG_DELETE_ITEM, arg1, strlen(arg1));
+        }
+    }
+    // 1. Lệnh Tạo thư mục
+    else if (strcasecmp(command, "MKDIR") == 0)
+    {
+        if (args < 2)
+        {
+            printf("Usage: MKDIR <foldername>\n");
+        }
+        else
+        {
+            send_packet(sockfd, MSG_CREATE_FOLDER, arg1, strlen(arg1));
+        }
+    }
+    // 2. Lệnh Đổi tên (File hoặc Folder)
+    else if (strcasecmp(command, "RENAME") == 0)
+    {
+        if (args < 3)
+        {
+            printf("Usage: RENAME <old_name> <new_name>\n");
+        }
+        else
+        {
+            char payload[256];
+            sprintf(payload, "%s %s", arg1, arg2); // Gộp 2 tham số thành chuỗi payload
+            send_packet(sockfd, MSG_RENAME_ITEM, payload, strlen(payload));
+        }
+    }
+    // 3. Lệnh Copy File
+    else if (strcasecmp(command, "COPY") == 0)
+    {
+        if (args < 3)
+        {
+            printf("Usage: COPY <source_file> <dest_file>\n");
+        }
+        else
+        {
+            char payload[256];
+            sprintf(payload, "%s %s", arg1, arg2);
+            send_packet(sockfd, MSG_COPY_ITEM, payload, strlen(payload));
+        }
+    }
+    // 4. Lệnh Di chuyển (Move)
+    else if (strcasecmp(command, "MOVE") == 0)
+    {
+        if (args < 3)
+        {
+            printf("Usage: MOVE <source> <dest>\n");
+        }
+        else
+        {
+            char payload[256];
+            sprintf(payload, "%s %s", arg1, arg2);
+            send_packet(sockfd, MSG_MOVE_ITEM, payload, strlen(payload));
+        }
+    }
+    // Add more commands here...
+    else
+    {
+        printf("Unknown command. Type 'HELP' for menu.\n");
+    }
+}
+
+void print_menu()
+{
+    printf("--- COMMAND MENU ---\n");
+    printf("1. LOGIN <user> <pass>\n");
+    printf("2. REGISTER <user> <pass>\n");
+    printf("3. CREATE_GROUP <name>\n");
+    printf("4. LIST_GROUPS\n");
+    printf("5. LOGOUT\n");
+    printf("6. CHANGE_PASS <old> <new>\n");
+    printf("7. DELETE_ACCOUNT <pass>\n");
+    printf("7. EXIT\n");
+}
