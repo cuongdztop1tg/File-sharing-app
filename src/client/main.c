@@ -6,7 +6,7 @@
 
 #include "common.h"
 #include "network.h"
-#include "client.h" // Use proper header instead of forward declarations
+#include "client.h"
 
 int main(int argc, char *argv[])
 {

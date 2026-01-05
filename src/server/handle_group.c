@@ -13,6 +13,24 @@
 Session *find_session(int sockfd);
 void log_activity(const char *msg);
 
+// Helper function to get log prefix with user info
+void get_group_log_prefix(int sockfd, char *buffer)
+{
+    Session *s = find_session(sockfd);
+    if (s && s->is_logged_in)
+    {
+        snprintf(buffer, 256, "[%s] User '%s' (ID %d)", s->client_ip, s->username, s->user_id);
+    }
+    else if (s)
+    {
+        snprintf(buffer, 256, "[%s] Guest", s->client_ip);
+    }
+    else
+    {
+        snprintf(buffer, 256, "[Unknown] Guest");
+    }
+}
+
 // DB Helpers from db.c
 // int db_read_groups(GroupInfo *groups, int max_count);
 // int db_write_group(const GroupInfo *group);
@@ -75,23 +93,36 @@ void handle_create_group(int sockfd, char *payload)
         snprintf(msg, sizeof(msg), "Group '%s' created with ID: %d", payload, group_id);
         send_packet(sockfd, MSG_SUCCESS, msg, strlen(msg));
 
-        char log_msg[256];
-        snprintf(log_msg, sizeof(log_msg), "User %s created group %d", s->username, group_id);
+        char log_prefix[256];
+        get_group_log_prefix(sockfd, log_prefix);
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "%s created group '%s' (ID: %d)", log_prefix, payload, group_id);
         log_activity(log_msg);
     }
     else
     {
+        char log_prefix[256];
+        get_group_log_prefix(sockfd, log_prefix);
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "%s failed to create group '%s'", log_prefix, payload);
+        log_activity(log_msg);
         send_packet(sockfd, MSG_ERROR, "Failed to create group", 22);
     }
 }
 
 void handle_list_groups(int sockfd)
 {
+    // Session *s = find_session(sockfd);
     GroupInfo groups[256];
     int count = db_read_groups(groups, 256);
 
     if (count < 0)
     {
+        char log_prefix[256];
+        get_group_log_prefix(sockfd, log_prefix);
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "%s failed to list groups (database error)", log_prefix);
+        log_activity(log_msg);
         send_packet(sockfd, MSG_ERROR, "Database error", 14);
         return;
     }
@@ -105,6 +136,12 @@ void handle_list_groups(int sockfd)
             strcat(buffer, line);
     }
     send_packet(sockfd, MSG_LIST_RESPONSE, buffer, strlen(buffer));
+
+    char log_prefix[256];
+    get_group_log_prefix(sockfd, log_prefix);
+    char log_msg[512];
+    snprintf(log_msg, sizeof(log_msg), "%s listed groups (%d groups found)", log_prefix, count);
+    log_activity(log_msg);
 }
 
 void handle_join_group(int sockfd, char *payload)
@@ -124,6 +161,11 @@ void handle_join_group(int sockfd, char *payload)
     {
         if (members[i].group_id == group_id && members[i].user_id == s->user_id)
         {
+            char log_prefix[256];
+            get_group_log_prefix(sockfd, log_prefix);
+            char log_msg[512];
+            snprintf(log_msg, sizeof(log_msg), "%s attempted to join group %d (already a member or pending)", log_prefix, group_id);
+            log_activity(log_msg);
             send_packet(sockfd, MSG_ERROR, "Already a member or pending", 27);
             return;
         }
@@ -132,10 +174,20 @@ void handle_join_group(int sockfd, char *payload)
     GroupMemberInfo new_m = {group_id, s->user_id, 0}; // 0 = Pending
     if (db_write_group_member(&new_m) == 0)
     {
+        char log_prefix[256];
+        get_group_log_prefix(sockfd, log_prefix);
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "%s requested to join group %d", log_prefix, group_id);
+        log_activity(log_msg);
         send_packet(sockfd, MSG_SUCCESS, "Join request sent to owner", 26);
     }
     else
     {
+        char log_prefix[256];
+        get_group_log_prefix(sockfd, log_prefix);
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "%s failed to request join group %d", log_prefix, group_id);
+        log_activity(log_msg);
         send_packet(sockfd, MSG_ERROR, "Request failed", 14);
     }
 }
@@ -161,6 +213,11 @@ void handle_approve_member(int sockfd, char *payload)
 
     if (!is_owner)
     {
+        char log_prefix[256];
+        get_group_log_prefix(sockfd, log_prefix);
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "%s attempted to approve member in group %d (not owner)", log_prefix, group_id);
+        log_activity(log_msg);
         send_packet(sockfd, MSG_ERROR, "Only owners can approve", 23);
         return;
     }
@@ -183,9 +240,23 @@ void handle_approve_member(int sockfd, char *payload)
     fclose(f);
 
     if (found)
+    {
+        char log_prefix[256];
+        get_group_log_prefix(sockfd, log_prefix);
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "%s approved user %d to join group %d", log_prefix, target_user_id, group_id);
+        log_activity(log_msg);
         send_packet(sockfd, MSG_SUCCESS, "Member approved", 15);
+    }
     else
+    {
+        char log_prefix[256];
+        get_group_log_prefix(sockfd, log_prefix);
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "%s attempted to approve user %d in group %d (request not found)", log_prefix, target_user_id, group_id);
+        log_activity(log_msg);
         send_packet(sockfd, MSG_ERROR, "Request not found", 17);
+    }
 }
 
 // --- MISSING FUNCTIONS IMPLEMENTED BELOW ---
@@ -202,6 +273,11 @@ void handle_leave_group(int sockfd, char *payload)
     {
         if (groups[i].group_id == group_id && groups[i].owner_id == s->user_id)
         {
+            char log_prefix[256];
+            get_group_log_prefix(sockfd, log_prefix);
+            char log_msg[512];
+            snprintf(log_msg, sizeof(log_msg), "%s attempted to leave group %d (owner cannot leave)", log_prefix, group_id);
+            log_activity(log_msg);
             send_packet(sockfd, MSG_ERROR, "Owner cannot leave the group", 28);
             return;
         }
@@ -224,9 +300,23 @@ void handle_leave_group(int sockfd, char *payload)
     fclose(f);
 
     if (found)
+    {
+        char log_prefix[256];
+        get_group_log_prefix(sockfd, log_prefix);
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "%s left group %d", log_prefix, group_id);
+        log_activity(log_msg);
         send_packet(sockfd, MSG_SUCCESS, "Left group successfully", 23);
+    }
     else
+    {
+        char log_prefix[256];
+        get_group_log_prefix(sockfd, log_prefix);
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "%s attempted to leave group %d (not a member)", log_prefix, group_id);
+        log_activity(log_msg);
         send_packet(sockfd, MSG_ERROR, "You are not in this group", 25);
+    }
 }
 
 void handle_list_members(int sockfd, char *payload)
@@ -235,11 +325,13 @@ void handle_list_members(int sockfd, char *payload)
     GroupMemberInfo members[512];
     int count = db_read_group_members(members, 512);
 
+    int member_count = 0;
     char buffer[BUFFER_SIZE] = "--- Group Members ---\n";
     for (int i = 0; i < count; i++)
     {
         if (members[i].group_id == group_id)
         {
+            member_count++;
             char line[64];
             snprintf(line, sizeof(line), "User ID: %d (%s)\n",
                      members[i].user_id, members[i].status == 1 ? "Member" : "Pending");
@@ -247,6 +339,12 @@ void handle_list_members(int sockfd, char *payload)
         }
     }
     send_packet(sockfd, MSG_LIST_RESPONSE, buffer, strlen(buffer));
+
+    char log_prefix[256];
+    get_group_log_prefix(sockfd, log_prefix);
+    char log_msg[512];
+    snprintf(log_msg, sizeof(log_msg), "%s listed members of group %d (%d members)", log_prefix, group_id, member_count);
+    log_activity(log_msg);
 }
 
 void handle_kick_member(int sockfd, char *payload)
@@ -267,6 +365,11 @@ void handle_kick_member(int sockfd, char *payload)
 
     if (!is_owner)
     {
+        char log_prefix[256];
+        get_group_log_prefix(sockfd, log_prefix);
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "%s attempted to kick user %d from group %d (not owner)", log_prefix, target_id, group_id);
+        log_activity(log_msg);
         send_packet(sockfd, MSG_ERROR, "Only owners can kick members", 27);
         return;
     }
@@ -282,11 +385,18 @@ void handle_kick_member(int sockfd, char *payload)
         fprintf(f, "%d %d %d\n", members[i].group_id, members[i].user_id, members[i].status);
     }
     fclose(f);
+
+    char log_prefix[256];
+    get_group_log_prefix(sockfd, log_prefix);
+    char log_msg[512];
+    snprintf(log_msg, sizeof(log_msg), "%s kicked user %d from group %d", log_prefix, target_id, group_id);
+    log_activity(log_msg);
     send_packet(sockfd, MSG_SUCCESS, "User kicked", 11);
 }
 
 void handle_invite_member(int sockfd, char *payload)
 {
+    // Session *s = find_session(sockfd);
     // For simplicity, invite works like an auto-approved join request
     int group_id, target_id;
     sscanf(payload, "%d %d", &group_id, &target_id);
@@ -294,10 +404,20 @@ void handle_invite_member(int sockfd, char *payload)
     GroupMemberInfo new_m = {group_id, target_id, 1}; // 1 = Approved
     if (db_write_group_member(&new_m) == 0)
     {
+        char log_prefix[256];
+        get_group_log_prefix(sockfd, log_prefix);
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "%s invited user %d to group %d", log_prefix, target_id, group_id);
+        log_activity(log_msg);
         send_packet(sockfd, MSG_SUCCESS, "User invited and added", 22);
     }
     else
     {
+        char log_prefix[256];
+        get_group_log_prefix(sockfd, log_prefix);
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "%s failed to invite user %d to group %d", log_prefix, target_id, group_id);
+        log_activity(log_msg);
         send_packet(sockfd, MSG_ERROR, "Invite failed", 13);
     }
 }
