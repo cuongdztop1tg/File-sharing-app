@@ -8,7 +8,7 @@
 #include "common.h"
 #include "network.h"
 #include "protocol.h"
-// #include "client_ui.h" // Uncomment if you have UI functions separated
+#include "client.h"
 
 // --- FUNCTION PROTOTYPES ---
 void handle_server_message(int sockfd);
@@ -21,7 +21,7 @@ void download_file(int sockfd, char *filename);
 // --- MAIN LOOP ---
 
 /**
- * @brief The main loop using select() to handle I/O
+ * @brief The main loop using select() to handle I/O multiplexing between stdin and the server socket.
  * @param sockfd The connected socket file descriptor
  */
 void client_main_loop(int sockfd) {
@@ -141,8 +141,17 @@ void handle_user_input(int sockfd) {
         close(sockfd);
         exit(0);
     }
-    else if (strcasecmp(command, "LOGIN") == 0) {
-        if (args < 3) {
+    // "HELP" prints full logged-in menu
+    else if (strcasecmp(command, "HELP") == 0)
+    {
+        print_logged_in_menu();
+    }
+
+    // --- AUTHENTICATION COMMANDS ---
+    else if (strcasecmp(command, "LOGIN") == 0)
+    {
+        if (args < 3)
+        {
             printf("Usage: LOGIN <username> <password>\n");
         } else {
             char payload[256];
@@ -191,32 +200,132 @@ void handle_user_input(int sockfd) {
     else if (strcasecmp(command, "LIST_GROUPS") == 0) {
         send_packet(sockfd, MSG_LIST_GROUPS, "", 0);
     }
-    else if (strcasecmp(command, "UPLOAD") == 0) {
-        if (args < 2) {
-            printf("Usage: UPLOAD <filename>\n");
-        } else {
-            upload_file(sockfd, arg1); // arg1 là tên file
+    // Join an existing group
+    else if (strcasecmp(command, "JOIN_GROUP") == 0)
+    {
+        if (args < 2)
+        {
+            printf("Usage: JOIN_GROUP <group_id>\n");
+        }
+        else
+        {
+            send_packet(sockfd, MSG_JOIN_GROUP, arg1, strlen(arg1));
         }
     }
-    else if (strcasecmp(command, "LIST") == 0) {
-        // request_list_files(sockfd);
-        // Nếu user gõ "LIST tailieu" (args = 2) -> Gửi "tailieu"
-        if (args >= 2) {
+    // Leave a group
+    else if (strcasecmp(command, "LEAVE_GROUP") == 0)
+    {
+        if (args < 2)
+        {
+            printf("Usage: LEAVE_GROUP <group_id>\n");
+        }
+        else
+        {
+            send_packet(sockfd, MSG_LEAVE_GROUP, arg1, strlen(arg1));
+        }
+    }
+    // List members of a group
+    else if (strcasecmp(command, "LIST_MEMBERS") == 0)
+    {
+        if (args < 2)
+        {
+            printf("Usage: LIST_MEMBERS <group_id>\n");
+        }
+        else
+        {
+            send_packet(sockfd, MSG_LIST_MEMBERS, arg1, strlen(arg1));
+        }
+    }
+    // Kick a member from a group
+    else if (strcasecmp(command, "KICK_MEMBER") == 0)
+    {
+        if (args < 3)
+        {
+            printf("Usage: KICK_MEMBER <group_id> <user_id>\n");
+        }
+        else
+        {
+            char payload[256];
+            sprintf(payload, "%s %s", arg1, arg2);
+            send_packet(sockfd, MSG_KICK_MEMBER, payload, strlen(payload));
+        }
+    }
+    // Invite a user to a group
+    else if (strcasecmp(command, "INVITE_MEMBER") == 0)
+    {
+        if (args < 3)
+        {
+            printf("Usage: INVITE_MEMBER <group_id> <user_id>\n");
+        }
+        else
+        {
+            char payload[256];
+            sprintf(payload, "%s %s", arg1, arg2);
+            send_packet(sockfd, MSG_INVITE_MEMBER, payload, strlen(payload));
+        }
+    }
+    // Approve a user's group join request
+    else if (strcasecmp(command, "APPROVE_MEMBER") == 0)
+    {
+        if (args < 3)
+        {
+            printf("Usage: APPROVE_MEMBER <group_id> <user_id>\n");
+        }
+        else
+        {
+            char payload[256];
+            sprintf(payload, "%s %s", arg1, arg2);
+            send_packet(sockfd, MSG_APPROVE_MEMBER, payload, strlen(payload));
+        }
+    }
+
+    // --- FILE MANAGEMENT COMMANDS ---
+    // List files/folders (with optional path arg)
+    else if (strcasecmp(command, "LIST") == 0)
+    {
+        // If user types "LIST subfolder" (args = 2) -> Send "subfolder"
+        if (args >= 2)
+        {
             send_packet(sockfd, MSG_LIST_FILES, arg1, strlen(arg1));
-        } 
+        }
         // Nếu user chỉ gõ "LIST" -> Gửi chuỗi rỗng ""
         else {
             send_packet(sockfd, MSG_LIST_FILES, "", 0);
         }
     }
-    else if (strcasecmp(command, "DOWNLOAD") == 0) {
-        if (args < 2) printf("Usage: DOWNLOAD <filename>\n");
-        else download_file(sockfd, arg1);
+    // Upload file to server
+    else if (strcasecmp(command, "UPLOAD") == 0)
+    {
+        if (args < 2)
+        {
+            printf("Usage: UPLOAD <filename>\n");
+        }
+        else
+        {
+            upload_file(sockfd, arg1);
+        }
     }
-    else if (strcasecmp(command, "DELETE") == 0) {
-        if (args < 2) printf("Usage: DELETE <filename>\n");
-        else {
-            // Gửi lệnh xóa (Logic đơn giản nên có thể code trực tiếp hoặc tách hàm)
+    // Download file from server
+    else if (strcasecmp(command, "DOWNLOAD") == 0)
+    {
+        if (args < 2)
+        {
+            printf("Usage: DOWNLOAD <filename>\n");
+        }
+        else
+        {
+            download_file(sockfd, arg1);
+        }
+    }
+    // Delete a file or folder
+    else if (strcasecmp(command, "DELETE") == 0)
+    {
+        if (args < 2)
+        {
+            printf("Usage: DELETE <filename>\n");
+        }
+        else
+        {
             send_packet(sockfd, MSG_DELETE_ITEM, arg1, strlen(arg1));
         }
     }
