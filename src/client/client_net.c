@@ -197,6 +197,13 @@ void handle_user_input(int sockfd) {
             send_packet(sockfd, MSG_CREATE_GROUP, arg1, strlen(arg1));
         }
     }
+    else if (strcasecmp(command, "DELETE_GROUP") == 0) {
+        if (args < 2) {
+            printf("Usage: DELETE_GROUP <group_id>\n");
+        } else {
+            send_packet(sockfd, MSG_DELETE_GROUP, arg1, strlen(arg1));
+        }
+    }
     else if (strcasecmp(command, "LIST_GROUPS") == 0) {
         send_packet(sockfd, MSG_LIST_GROUPS, "", 0);
     }
