@@ -7,18 +7,17 @@
 #include "common.h"
 #include "protocol.h"
 #include "network.h"
-
-// #include"./common/db.c"
+#include "db.h"
 
 // Khai báo hàm để hàm bên dưới gọi
 Session *find_session(int sockfd);
 void log_activity(const char *msg);
 
 // DB Helpers from db.c
-int db_read_groups(GroupInfo *groups, int max_count);
-int db_write_group(const GroupInfo *group);
-int db_read_group_members(GroupMemberInfo *members, int max_count);
-int db_write_group_member(const GroupMemberInfo *member);
+// int db_read_groups(GroupInfo *groups, int max_count);
+// int db_write_group(const GroupInfo *group);
+// int db_read_group_members(GroupMemberInfo *members, int max_count);
+// int db_write_group_member(const GroupMemberInfo *member);
 
 // --- DB-LEVEL LOGIC ---
 
