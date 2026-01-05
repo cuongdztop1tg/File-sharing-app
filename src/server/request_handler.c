@@ -8,7 +8,8 @@ void handle_login(int sockfd, char *payload);
 void handle_register(int sockfd, char *payload);
 // void handle_create_group(int sockfd, char *payload); // Future implementation
 
-Khai báo prototype cho Module 2(Group Management) void handle_create_group(int sockfd, char *payload);
+// Khai báo prototype cho Module 2(Group Management)
+void handle_create_group(int sockfd, char *payload);
 void handle_list_groups(int sockfd);
 void handle_join_group(int sockfd, char *payload);
 void handle_leave_group(int sockfd, char *payload);
