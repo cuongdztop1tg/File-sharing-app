@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <errno.h>
 #include "common.h"
 
 // --- USER MANAGEMENT ---
@@ -93,12 +95,16 @@ typedef struct
     int status;
 } GroupMemberInfo; // 0: Pending, 1: Accepted
 
-// Reads all groups from "../../data/groups.txt"
+// NOTE ON PATHS:
+// The server binary runs from the project root (./bin/server), so the working directory
+// is the project root. All DB file paths use "./data/..." to match USER_DB_FILE.
+
+// Reads all groups from "./data/groups.txt"
 // Returns: count of groups loaded, or -1 on error
 // Param: groups: pointer to array of GroupInfo, max_count: maximum number of groups to read
 int db_read_groups(GroupInfo *groups, int max_count)
 {
-    FILE *f = fopen("../../data/groups.txt", "r");
+    FILE *f = fopen("./data/groups.txt", "r");
     if (!f)
         return -1;
     int count = 0;
@@ -110,12 +116,23 @@ int db_read_groups(GroupInfo *groups, int max_count)
     return count;
 }
 
-// Appends a group to "../../data/groups.txt"
+// Appends a group to "./data/groups.txt"
 // Returns 0 on success, -1 on error
 // Param: group: pointer to GroupInfo (group_id, name, owner_id)
 int db_write_group(const GroupInfo *group)
 {
-    FILE *f = fopen("../../data/groups.txt", "a");
+    // Ensure data directory exists
+    struct stat st = {0};
+    if (stat("./data", &st) == -1)
+    {
+        // Directory doesn't exist, try to create it
+        if (mkdir("./data", 0755) != 0 && errno != EEXIST)
+        {
+            return -1; // Failed to create directory
+        }
+    }
+
+    FILE *f = fopen("./data/groups.txt", "a");
     if (!f)
         return -1;
     fprintf(f, "%d %s %d\n", group->group_id, group->name, group->owner_id);
@@ -123,12 +140,12 @@ int db_write_group(const GroupInfo *group)
     return 0;
 }
 
-// Reads all group members from "../../data/group_members.txt"
+// Reads all group members from "./data/group_members.txt"
 // Returns: count of members loaded, or -1 on error
 // Param: members: pointer to array of GroupMemberInfo, max_count: maximum number of members to read
 int db_read_group_members(GroupMemberInfo *members, int max_count)
 {
-    FILE *f = fopen("../../data/group_members.txt", "r");
+    FILE *f = fopen("./data/group_members.txt", "r");
     if (!f)
         return -1;
     int count = 0;
@@ -140,12 +157,23 @@ int db_read_group_members(GroupMemberInfo *members, int max_count)
     return count;
 }
 
-// Appends a member to "../../data/group_members.txt"
+// Appends a member to "./data/group_members.txt"
 // Returns 0 on success, -1 on error
 // Param: member: pointer to GroupMemberInfo
 int db_write_group_member(const GroupMemberInfo *member)
 {
-    FILE *f = fopen("../../data/group_members.txt", "a");
+    // Ensure data directory exists
+    struct stat st = {0};
+    if (stat("./data", &st) == -1)
+    {
+        // Directory doesn't exist, try to create it
+        if (mkdir("./data", 0755) != 0 && errno != EEXIST)
+        {
+            return -1; // Failed to create directory
+        }
+    }
+
+    FILE *f = fopen("./data/group_members.txt", "a");
     if (!f)
         return -1;
     fprintf(f, "%d %d %d\n", member->group_id, member->user_id, member->status);

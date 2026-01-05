@@ -24,7 +24,7 @@ void log_activity(const char *msg);
 int db_create_group_directory(int group_id)
 {
     char dir_path[256];
-    // Synced with handle_file.c path: ./data/files/
+    // Server runs from project root, so use "./data/files/Group_X"
     snprintf(dir_path, sizeof(dir_path), "./data/files/Group_%d", group_id);
 
     int res = mkdir(dir_path, 0755);
@@ -48,12 +48,11 @@ int db_create_group(const char *group_name, int owner_id)
 
     if (db_write_group(&new_group) == 0)
     {
-        db_create_group_directory(group_id);
+        int dir_res = db_create_group_directory(group_id);
 
         // Auto-add owner as an approved member (status 1)
         GroupMemberInfo owner_membership = {group_id, owner_id, 1};
-        db_write_group_member(&owner_membership);
-
+        int mem_res = db_write_group_member(&owner_membership);
         return group_id;
     }
     return -1;
@@ -69,7 +68,6 @@ void handle_create_group(int sockfd, char *payload)
         send_packet(sockfd, MSG_ERROR, "Login required", 14);
         return;
     }
-
     int group_id = db_create_group(payload, s->user_id);
     if (group_id > 0)
     {
@@ -171,7 +169,8 @@ void handle_approve_member(int sockfd, char *payload)
     int count = db_read_group_members(members, 512);
     int found = 0;
 
-    FILE *f = fopen("./data/group_members.txt", "w"); // Update path
+    // Server runs from project root, so use "./data/group_members.txt"
+    FILE *f = fopen("./data/group_members.txt", "w");
     for (int i = 0; i < count; i++)
     {
         if (members[i].group_id == group_id && members[i].user_id == target_user_id)
@@ -195,6 +194,18 @@ void handle_leave_group(int sockfd, char *payload)
 {
     Session *s = find_session(sockfd);
     int group_id = atoi(payload);
+
+    // Check if user is the owner of this group
+    GroupInfo groups[256];
+    int g_count = db_read_groups(groups, 256);
+    for (int i = 0; i < g_count; i++)
+    {
+        if (groups[i].group_id == group_id && groups[i].owner_id == s->user_id)
+        {
+            send_packet(sockfd, MSG_ERROR, "Owner cannot leave the group", 28);
+            return;
+        }
+    }
 
     GroupMemberInfo members[512];
     int count = db_read_group_members(members, 512);

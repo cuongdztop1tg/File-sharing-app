@@ -57,4 +57,4 @@ run_server: server
 
 # Chạy thử Client nhanh (Gõ 'make run_client')
 run_client: client
-	./$(BIN_DIR)/client
+	./$(BIN_DIR)/client 127.0.0.1 3636
