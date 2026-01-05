@@ -43,7 +43,7 @@ int db_create_group_directory(int group_id)
 {
     char dir_path[256];
     // Server runs from project root, so use "./data/files/Group_X"
-    snprintf(dir_path, sizeof(dir_path), "./data/files/Group_%d", group_id);
+    snprintf(dir_path, sizeof(dir_path), "./data/Group_%d", group_id);
 
     int res = mkdir(dir_path, 0755);
     return (res == 0 || errno == EEXIST) ? 0 : -1;
@@ -66,11 +66,9 @@ int db_create_group(const char *group_name, int owner_id)
 
     if (db_write_group(&new_group) == 0)
     {
-        // int dir_res = db_create_group_directory(group_id);
-
         // Auto-add owner as an approved member (status 1)
-        // GroupMemberInfo owner_membership = {group_id, owner_id, 1};
-        // int mem_res = db_write_group_member(&owner_membership);
+        GroupMemberInfo owner_membership = {group_id, owner_id, 1};
+        db_write_group_member(&owner_membership);
         return group_id;
     }
     return -1;
@@ -98,6 +96,25 @@ void handle_create_group(int sockfd, char *payload)
         char log_msg[512];
         snprintf(log_msg, sizeof(log_msg), "%s created group '%s' (ID: %d)", log_prefix, payload, group_id);
         log_activity(log_msg);
+
+        int dir_res = db_create_group_directory(group_id);
+        if (dir_res < 0)
+        {
+            char log_prefix[256];
+            get_group_log_prefix(sockfd, log_prefix);
+            char log_msg[512];
+            snprintf(log_msg, sizeof(log_msg), "%s failed to create directory for group %d", log_prefix, group_id);
+            log_activity(log_msg);
+            // Optionally notify the client (non-fatal)
+            send_packet(sockfd, MSG_ERROR, "Warning: directory not created", 29);
+        }
+        else
+        {
+            char log_prefix[256];
+            get_group_log_prefix(sockfd, log_prefix);
+            snprintf(log_msg, sizeof(log_msg), "%s successfully created directory for group %d", log_prefix, group_id);
+            log_activity(log_msg);
+        }
     }
     else
     {
