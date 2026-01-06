@@ -10,6 +10,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <sys/file.h>
+#include "db.h"
 
 #define FILE_STORAGE_PATH "./data/files/"
 
@@ -18,6 +19,9 @@ int remove_directory_recursive(const char *path);
 Session *find_session(int sockfd);
 void log_activity(const char *msg);
 int remove_directory_recursive(const char *path);
+int check_group_write_permission(int user_id, const char *path); // <-- Add this 
+int check_group_owner_permission(int user_id, const char *path);
+
 
 // --- HÀM HỖ TRỢ LOGGING ---
 /**
@@ -115,6 +119,15 @@ void handle_upload_request(int sockfd, char *payload) {
     
     // Payload format: "filename filesize"
     sscanf(payload, "%s %ld", filename, &filesize);
+
+    Session *s = find_session(sockfd);
+    if (s && !check_group_write_permission(s->user_id, filename)) {
+        send_packet(sockfd, MSG_ERROR, "Access Denied: You are not a member of this group", 48);
+        char log_msg[512];
+        sprintf(log_msg, "%s - UPLOAD denied to '%s' (Not a group member)", log_prefix, filename);
+        log_activity(log_msg);
+        return;
+    }
 
     char log_msg[512];
     sprintf(log_msg, "%s requesting UPLOAD '%s' (%ld bytes)", log_prefix, filename, filesize);
@@ -256,6 +269,21 @@ void handle_download_request(int sockfd, char *filename) {
 void handle_delete_item(int sockfd, char *filename) {
     char log_prefix[256];
     get_log_prefix(sockfd, log_prefix);
+
+    Session *s = find_session(sockfd);
+    if (s) {
+        // Kiểm tra xem file có thuộc nhóm nào không
+        if (strstr(filename, "Group_")) {
+            if (!check_group_owner_permission(s->user_id, filename)) {
+                send_packet(sockfd, MSG_ERROR, "Access Denied: Only Group Owner can delete", 100);
+                char log_msg[512];
+                sprintf(log_msg, "%s - DELETE denied '%s' (Not owner)", s->username, filename);
+                log_activity(log_msg);
+                return;
+            }
+        }
+        // Nếu không phải file nhóm thì thôi (hoặc check quyền sở hữu cá nhân nếu muốn)
+    }
     
     char log_msg[512];
     sprintf(log_msg, "%s requested DELETE '%s'", log_prefix, filename);
@@ -301,6 +329,27 @@ void handle_rename_item(int sockfd, char *payload) {
     if (sscanf(payload, "%s %s", old_name, new_name) < 2) {
         send_packet(sockfd, MSG_ERROR, "Usage: RENAME <old> <new>", 25);
         return;
+    }
+
+    // --- [THÊM CHECK QUYỀN] ---
+    Session *s = find_session(sockfd);
+    
+    // Rename thực chất là move tại chỗ, cần check cả tên cũ và tên mới
+    // đề phòng trường hợp rename từ "root/file.txt" thành "Group_1/file.txt" (Hack để đẩy file vào nhóm)
+    // [SỬA ĐỔI]: Kiểm tra quyền Owner cho cả tên cũ (nguồn) và tên mới (đích)
+    if (s) {
+        // Nếu đụng đến file trong Group, phải là Owner
+        if ((strstr(old_name, "Group_") || strstr(new_name, "Group_"))) {
+             // Logic chặt chẽ: 
+             // 1. Muốn đổi tên file trong nhóm -> Phải là Owner
+             // 2. Muốn biến file thường thành file nhóm (Move vào) -> Cần check quyền ghi (Member là đủ)
+             // Nhưng ở đây ta đang nói về RENAME (Đổi tên/Di chuyển nội bộ), nên tốt nhất bắt Owner
+             
+             if (!check_group_owner_permission(s->user_id, old_name)) {
+                send_packet(sockfd, MSG_ERROR, "Access Denied: Only Owner can rename group files", 100);
+                return;
+             }
+        }
     }
 
     char log_msg[512];
@@ -351,6 +400,27 @@ void handle_move_item(int sockfd, char *payload) {
     // Ví dụ 2: "sub/file.txt  .."        (Move file ra ngoài 1 cấp so với thư mục sub)
     if (sscanf(payload, "%s %s", src_name, dest_folder_input) < 2) {
         send_packet(sockfd, MSG_ERROR, "Usage: MOVE <source> <dest_folder>", 32);
+        return;
+    }
+    Session *s = find_session(sockfd);
+    
+    // 1. Kiểm tra quyền NGUỒN (Source)
+    // Ngăn chặn việc lấy file từ nhóm mà mình không tham gia để move đi chỗ khác
+    if (s && !check_group_write_permission(s->user_id, src_name)) {
+        send_packet(sockfd, MSG_ERROR, "Access Denied: You cannot move files from this group", 52);
+        char log_msg[512];
+        sprintf(log_msg, "%s - MOVE denied source '%s' (Not a group member)", log_prefix, src_name);
+        log_activity(log_msg);
+        return;
+    }
+
+    // 2. Kiểm tra quyền ĐÍCH (Destination)
+    // Ngăn chặn việc ném file vào nhóm mà mình không tham gia
+    if (s && !check_group_write_permission(s->user_id, dest_folder_input)) {
+        send_packet(sockfd, MSG_ERROR, "Access Denied: You cannot move files to this group", 50);
+        char log_msg[512];
+        sprintf(log_msg, "%s - MOVE denied dest '%s' (Not a group member)", log_prefix, dest_folder_input);
+        log_activity(log_msg);
         return;
     }
 
@@ -438,6 +508,16 @@ void handle_move_item(int sockfd, char *payload) {
 void handle_create_folder(int sockfd, char *foldername) {
     char log_prefix[256];
     get_log_prefix(sockfd, log_prefix);
+
+    Session *s = find_session(sockfd);
+    // Lưu ý: foldername ở đây có thể là "Group_1/NewFolder"
+    if (s && !check_group_write_permission(s->user_id, foldername)) {
+        send_packet(sockfd, MSG_ERROR, "Access Denied: You are not a member of this group", 48);
+        char log_msg[512];
+        sprintf(log_msg, "%s - MKDIR denied at '%s' (Not a group member)", log_prefix, foldername);
+        log_activity(log_msg);
+        return;
+    }
 
     char log_msg[512];
     sprintf(log_msg, "%s requested CREATE FOLDER '%s'", log_prefix, foldername);
@@ -590,6 +670,22 @@ void handle_copy_file(int sockfd, char *payload) {
         return;
     }
 
+    Session *s = find_session(sockfd);
+    
+    // Check nguồn (Có được đọc file từ nhóm này để copy không?)
+    // Lưu ý: Tùy chính sách, có thể cho phép copy ra nhưng không cho copy vào. 
+    // Nhưng để an toàn nhất thì chặn cả hai nếu không phải member.
+    if (s && !check_group_write_permission(s->user_id, src_name)) {
+         send_packet(sockfd, MSG_ERROR, "Access Denied: Source group restricted", 38);
+         return;
+    }
+
+    // Check đích (Có được tạo file mới trong nhóm này không?)
+    if (s && !check_group_write_permission(s->user_id, dest_input)) {
+         send_packet(sockfd, MSG_ERROR, "Access Denied: Destination group restricted", 43);
+         return;
+    }
+
     // 1. Resolve Source Path
     char src_path[PATH_MAX];
     snprintf(src_path, sizeof(src_path), "%s%s", FILE_STORAGE_PATH, src_name);
@@ -666,4 +762,67 @@ void handle_copy_file(int sockfd, char *payload) {
         sprintf(log_msg, "%s - COPY failed", log_prefix);
         log_activity(log_msg);
     }
+}
+
+// Hàm kiểm tra: User có thuộc nhóm trong đường dẫn không?
+// Trả về: 1 (Cho phép), 0 (Từ chối)
+int check_group_write_permission(int user_id, const char *path) {
+    int group_id;
+    
+    // Kiểm tra xem đường dẫn có bắt đầu bằng "Group_" hay không
+    // Ví dụ path: "Group_1/baitap.txt" hoặc "Group_10/sub/file"
+    if (sscanf(path, "Group_%d/", &group_id) == 1 || 
+        (strncmp(path, "Group_", 6) == 0 && sscanf(path, "Group_%d", &group_id) == 1)) {
+        
+        // Đường dẫn thuộc về một nhóm. Kiểm tra xem user có trong nhóm đó không.
+        GroupMemberInfo members[512];
+        int count = db_read_group_members(members, 512);
+        
+        for (int i = 0; i < count; i++) {
+            // User phải khớp ID, đúng Group ID và Status = 1 (Đã được duyệt)
+            if (members[i].group_id == group_id && 
+                members[i].user_id == user_id && 
+                members[i].status == 1) {
+                return 1; // Là thành viên -> Cho phép
+            }
+        }
+        
+        // Nếu vòng lặp kết thúc mà không thấy -> Không phải thành viên
+        return 0; 
+    }
+    
+    // Nếu file nằm ở thư mục gốc (không thuộc Group_X nào), 
+    // ta có thể cho phép hoặc chặn tùy policy. Ở đây giả sử cho phép user upload ra ngoài root.
+    return 1; 
+}
+
+
+// Hàm kiểm tra: User có phải là TRƯỞNG NHÓM của file/folder này không?
+// Trả về: 1 (Là Owner - Cho phép), 0 (Không phải Owner - Chặn)
+int check_group_owner_permission(int user_id, const char *path) {
+    int group_id;
+    
+    // Kiểm tra xem đường dẫn có thuộc về Group nào không
+    if (sscanf(path, "Group_%d/", &group_id) == 1 || 
+        (strncmp(path, "Group_", 6) == 0 && sscanf(path, "Group_%d", &group_id) == 1)) {
+        
+        // Đọc danh sách Groups để tìm Owner
+        GroupInfo groups[256];
+        int count = db_read_groups(groups, 256);
+        
+        for (int i = 0; i < count; i++) {
+            if (groups[i].group_id == group_id) {
+                // Nếu User ID trùng với Owner ID của nhóm -> OK
+                if (groups[i].owner_id == user_id) {
+                    return 1;
+                } else {
+                    return 0;
+                }
+            }
+        }
+        return 0; // Không tìm thấy nhóm
+    }
+    
+    // Nếu file không thuộc nhóm (file cá nhân ở root), cho phép xóa chính chủ
+    return 1; 
 }

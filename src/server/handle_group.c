@@ -44,7 +44,8 @@ int db_create_group_directory(int group_id)
 {
     char dir_path[256];
     // Server runs from project root, so use "./data/files/Group_X"
-    snprintf(dir_path, sizeof(dir_path), "./data/Group_%d", group_id);
+    // snprintf(dir_path, sizeof(dir_path), "./data/Group_%d", group_id);
+    snprintf(dir_path, sizeof(dir_path), "./data/files/Group_%d", group_id);
 
     int res = mkdir(dir_path, 0755);
     return (res == 0 || errno == EEXIST) ? 0 : -1;
