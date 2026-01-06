@@ -593,7 +593,8 @@ void handle_delete_group(int sockfd, char *payload)
 
     // 4. Delete the group directory
     char dir_path[256];
-    snprintf(dir_path, sizeof(dir_path), "./data/Group_%d", group_id);
+    // snprintf(dir_path, sizeof(dir_path), "./data/Group_%d", group_id);
+    snprintf(dir_path, sizeof(dir_path), "./data/files/Group_%d", group_id);
     errno = 0; // Clear errno before call
     int dir_res = remove_directory_recursive(dir_path);
     int saved_errno = errno; // Save errno immediately after call
