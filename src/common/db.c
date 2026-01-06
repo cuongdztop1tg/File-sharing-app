@@ -3,7 +3,10 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <pthread.h>
 #include "common.h"
+
+pthread_mutex_t db_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // --- USER MANAGEMENT ---
 
@@ -13,10 +16,13 @@
  */
 int db_check_login(const char *username, const char *password)
 {
+    pthread_mutex_lock(&db_mutex); // <--- LOCK
+    
     FILE *f = fopen(USER_DB_FILE, "r");
-    if (!f)
+    if (!f){
+        pthread_mutex_unlock(&db_mutex); // <--- UNLOCK trước khi return
         return -1;
-
+    }
     int id;
     char u[50], p[50];
 
@@ -26,11 +32,13 @@ int db_check_login(const char *username, const char *password)
         if (strcmp(u, username) == 0 && strcmp(p, password) == 0)
         {
             fclose(f);
+            pthread_mutex_unlock(&db_mutex); // <--- UNLOCK
             return id; // Login success
         }
     }
 
     fclose(f);
+    pthread_mutex_unlock(&db_mutex); // <--- UNLOCK
     return -1; // Login failed
 }
 
@@ -40,10 +48,12 @@ int db_check_login(const char *username, const char *password)
  */
 int db_register_user(const char *username, const char *password)
 {
+    pthread_mutex_lock(&db_mutex); // <--- LOCK
     FILE *f = fopen(USER_DB_FILE, "a+"); // Read + Append
-    if (!f)
+    if (!f){
+        pthread_mutex_unlock(&db_mutex);
         return -1;
-
+    }
     int id = 0, max_id = 0;
     char u[50], p[50];
     int exists = 0;
@@ -64,6 +74,7 @@ int db_register_user(const char *username, const char *password)
     if (exists)
     {
         fclose(f);
+        pthread_mutex_unlock(&db_mutex);
         return -1; // Error: User exists
     }
 
@@ -74,6 +85,7 @@ int db_register_user(const char *username, const char *password)
     fprintf(f, "%d %s %s\n", new_id, username, password);
 
     fclose(f);
+    pthread_mutex_unlock(&db_mutex); // <--- UNLOCK
     return new_id;
 }
 
@@ -82,10 +94,14 @@ int db_register_user(const char *username, const char *password)
  * @return 0 nếu thành công, -1 nếu thất bại
  */
 int db_change_password(int user_id, const char *new_password) {
+    pthread_mutex_lock(&db_mutex); // <--- LOCK
     FILE *f = fopen(USER_DB_FILE, "r");
     FILE *temp = fopen("users.tmp", "w");
     
-    if (!f || !temp) return -1;
+    if (!f || !temp) {
+        pthread_mutex_unlock(&db_mutex);
+        return -1;
+    }
 
     int id;
     char u[50], p[50];
@@ -109,9 +125,11 @@ int db_change_password(int user_id, const char *new_password) {
     if (found) {
         remove(USER_DB_FILE);       // Xóa file cũ
         rename("users.tmp", USER_DB_FILE); // Đổi tên file tạm thành file chính
+        pthread_mutex_unlock(&db_mutex);
         return 0;
     } else {
         remove("users.tmp");
+        pthread_mutex_unlock(&db_mutex);
         return -1;
     }
 }
@@ -120,9 +138,15 @@ int db_change_password(int user_id, const char *new_password) {
  * @brief Xóa user khỏi database
  */
 int db_delete_user(int user_id) {
+    pthread_mutex_lock(&db_mutex); // <--- LOCK
     FILE *f = fopen(USER_DB_FILE, "r");
     FILE *temp = fopen("users.tmp", "w");
-    if (!f || !temp) return -1;
+    if (!f || !temp) {
+        if (f) fclose(f);
+        if (temp) fclose(temp);
+        pthread_mutex_unlock(&db_mutex);
+        return -1;
+    }
 
     int id;
     char u[50], p[50];
@@ -142,9 +166,11 @@ int db_delete_user(int user_id) {
     if (found) {
         remove(USER_DB_FILE);
         rename("users.tmp", USER_DB_FILE);
+        pthread_mutex_unlock(&db_mutex);
         return 0;
     } else {
         remove("users.tmp");
+        pthread_mutex_unlock(&db_mutex);
         return -1;
     }
 }

@@ -38,6 +38,25 @@ void get_log_prefix(int sockfd, char *buffer) {
     }
 }
 
+// Thêm vào đầu file handle_file.c
+int is_file_busy(const char *filepath) {
+    FILE *f = fopen(filepath, "r");
+    if (!f) return 0; // File không mở được (hoặc không tồn tại) -> Coi như không bận
+
+    int fd = fileno(f);
+    // Thử lấy LOCK_EX với chế độ LOCK_NB (Non-Blocking)
+    // Nếu không lấy được ngay (do ai đó đang giữ lock) thì trả về -1
+    if (flock(fd, LOCK_EX | LOCK_NB) != 0) {
+        fclose(f);
+        return 1; // File đang bận (Busy)
+    }
+
+    // Nếu lấy được lock -> File rảnh -> Unlock và trả về 0
+    flock(fd, LOCK_UN);
+    fclose(f);
+    return 0; // File rảnh
+}
+
 // 1. Hàm liệt kê file trong thư mục server
 void handle_list_files(int sockfd, char *subpath) {
 
@@ -292,7 +311,16 @@ void handle_delete_item(int sockfd, char *filename) {
     char filepath[256];
     sprintf(filepath, "%s%s", FILE_STORAGE_PATH, filename);
 
+    
+
     struct stat st;
+    if (stat(filepath, &st) == 0 && S_ISREG(st.st_mode)) { // Chỉ check lock với File
+        if (is_file_busy(filepath)) {
+            send_packet(sockfd, MSG_ERROR, "Cannot delete: File is being used by another user.", 50);
+            return;
+        }
+    }
+    
     if (stat(filepath, &st) == 0 && S_ISDIR(st.st_mode)) {
         // Nếu là thư mục, gọi hàm xóa đệ quy
         if (remove_directory_recursive(filepath) == 0){
@@ -359,6 +387,12 @@ void handle_rename_item(int sockfd, char *payload) {
     char old_path[512], new_path[512];
     sprintf(old_path, "%s%s", FILE_STORAGE_PATH, old_name);
     sprintf(new_path, "%s%s", FILE_STORAGE_PATH, new_name);
+
+    // --- CHECK RACE CONDITION ---
+    if (is_file_busy(old_path)) {
+        send_packet(sockfd, MSG_ERROR, "Cannot rename: File is busy.", 27);
+        return;
+    }
 
     // 1. Check nguồn
     if (access(old_path, F_OK) != 0) {
@@ -435,6 +469,14 @@ void handle_move_item(int sockfd, char *payload) {
         return;
     }
 
+    // Nếu nguồn là File, kiểm tra xem có đang bận không
+    if (S_ISREG(st_src.st_mode)) {
+        if (is_file_busy(src_path)) {
+            send_packet(sockfd, MSG_ERROR, "Cannot move: File is being used by another user.", 50);
+            return;
+        }
+    }
+
     // 2. Xử lý đường dẫn đích (Dest Path) & Hỗ trợ ".."
     // Bước A: Tạo đường dẫn thô
     char raw_dest_path[PATH_MAX];
@@ -453,14 +495,14 @@ void handle_move_item(int sockfd, char *payload) {
     // Lấy đường dẫn tuyệt đối của đích đến
     if (realpath(raw_dest_path, resolved_dest_path) == NULL) {
         // Nếu đích không tồn tại (realpath fail), báo lỗi ngay vì MOVE cần folder đích phải có trước
-        send_packet(sockfd, MSG_ERROR, "Destination folder not found or invalid", 37);
+        send_packet(sockfd, MSG_ERROR, "Destination folder not found or invalid", 50);
         return;
     }
 
     // Bước C: BẢO MẬT - Chống Hack "Move ra ngoài Root"
     // So sánh xem đường dẫn đích có bắt đầu bằng đường dẫn gốc không
     if (strncmp(resolved_dest_path, resolved_storage_root, strlen(resolved_storage_root)) != 0) {
-        send_packet(sockfd, MSG_ERROR, "Access Denied: Cannot move out of storage root", 46);
+        send_packet(sockfd, MSG_ERROR, "Access Denied: Cannot move out of storage root", 50);
         char log_msg[512];
         sprintf(log_msg, "%s - SECURITY ALERT: Attempted to move file outside root!", log_prefix);
         log_activity(log_msg);
@@ -478,7 +520,7 @@ void handle_move_item(int sockfd, char *payload) {
 
     // 4. Kiểm tra trùng tên tại đích
     if (access(final_dest_path, F_OK) == 0) {
-        send_packet(sockfd, MSG_ERROR, "Item already exists in destination", 34);
+        send_packet(sockfd, MSG_ERROR, "Item already exists in destination", 50);
         return;
     }
 
@@ -494,11 +536,11 @@ void handle_move_item(int sockfd, char *payload) {
         // Xử lý lỗi cụ thể
         if (errno == EINVAL) {
             // Lỗi này xảy ra khi cố move Folder Cha vào Folder Con của chính nó
-            send_packet(sockfd, MSG_ERROR, "Invalid move: Cannot move folder into itself", 44);
+            send_packet(sockfd, MSG_ERROR, "Invalid move: Cannot move folder into itself", 50);
         } else if (errno == EXDEV) {
-            send_packet(sockfd, MSG_ERROR, "Cannot move across different disk partitions", 44);
+            send_packet(sockfd, MSG_ERROR, "Cannot move across different disk partitions", 50);
         } else {
-            send_packet(sockfd, MSG_ERROR, "Move failed (System Error)", 26);
+            send_packet(sockfd, MSG_ERROR, "Move failed (System Error)", 50);
             perror("Move Error");
         }
     }
