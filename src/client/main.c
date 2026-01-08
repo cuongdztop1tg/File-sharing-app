@@ -28,9 +28,9 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    printf("╔════════════════════════════════════╗\n");
-    printf("║   FILE SHARING CLIENT v1.0         ║\n");
-    printf("╚════════════════════════════════════╝\n");
+    // printf("╔════════════════════════════════════╗\n");
+    // printf("║   FILE SHARING CLIENT v1.0         ║\n");
+    // printf("╚════════════════════════════════════╝\n");
     printf("Connecting to %s:%d ...\n", server_ip, port);
 
     // 2. Create TCP socket

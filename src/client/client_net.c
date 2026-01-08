@@ -30,7 +30,7 @@ void client_main_loop(int sockfd)
     int max_fd;
 
     printf("\n--- CLIENT STARTED ---\n");
-    print_menu();
+    print_main_menu();
     printf("> ");
     fflush(stdout);
 
@@ -446,15 +446,15 @@ void handle_user_input(int sockfd)
     }
 }
 
-void print_menu()
-{
-    printf("--- COMMAND MENU ---\n");
-    printf("1. LOGIN <user> <pass>\n");
-    printf("2. REGISTER <user> <pass>\n");
-    printf("3. CREATE_GROUP <name>\n");
-    printf("4. LIST_GROUPS\n");
-    printf("5. LOGOUT\n");
-    printf("6. CHANGE_PASS <old> <new>\n");
-    printf("7. DELETE_ACCOUNT <pass>\n");
-    printf("7. EXIT\n");
-}
+// void print_menu()
+// {
+//     printf("--- COMMAND MENU ---\n");
+//     printf("1. LOGIN <user> <pass>\n");
+//     printf("2. REGISTER <user> <pass>\n");
+//     printf("3. CREATE_GROUP <name>\n");
+//     printf("4. LIST_GROUPS\n");
+//     printf("5. LOGOUT\n");
+//     printf("6. CHANGE_PASS <old> <new>\n");
+//     printf("7. DELETE_ACCOUNT <pass>\n");
+//     printf("7. EXIT\n");
+// }
