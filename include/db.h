@@ -5,15 +5,13 @@
 
 // --- GROUP DATA STRUCTURES ---
 
-typedef struct
-{
+typedef struct {
     int group_id;
     char name[64];
     int owner_id;
 } GroupInfo;
 
-typedef struct
-{
+typedef struct {
     int group_id;
     int user_id;
     int status; // 0: Pending, 1: Accepted

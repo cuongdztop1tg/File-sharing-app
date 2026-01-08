@@ -8,7 +8,7 @@
  * @param msg The message string to log.
  */
 void log_activity(const char *msg) {
-    FILE *f = fopen(LOG_FILE, "a"); // Open in Append mode
+    FILE *f = fopen(LOG_FILE, "a");
     if (f == NULL) {
         perror("Cannot open log file");
         return;

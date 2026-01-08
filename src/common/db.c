@@ -16,12 +16,12 @@ pthread_mutex_t db_mutex = PTHREAD_MUTEX_INITIALIZER;
  */
 int db_check_login(const char *username, const char *password)
 {
-    pthread_mutex_lock(&db_mutex); // <--- LOCK
+    pthread_mutex_lock(&db_mutex);
 
     FILE *f = fopen(USER_DB_FILE, "r");
     if (!f)
     {
-        pthread_mutex_unlock(&db_mutex); // <--- UNLOCK trước khi return
+        pthread_mutex_unlock(&db_mutex);
         return -1;
     }
     int id;
@@ -33,13 +33,13 @@ int db_check_login(const char *username, const char *password)
         if (strcmp(u, username) == 0 && strcmp(p, password) == 0)
         {
             fclose(f);
-            pthread_mutex_unlock(&db_mutex); // <--- UNLOCK
+            pthread_mutex_unlock(&db_mutex);
             return id;                       // Login success
         }
     }
 
     fclose(f);
-    pthread_mutex_unlock(&db_mutex); // <--- UNLOCK
+    pthread_mutex_unlock(&db_mutex);
     return -1;                       // Login failed
 }
 
@@ -49,7 +49,7 @@ int db_check_login(const char *username, const char *password)
  */
 int db_register_user(const char *username, const char *password)
 {
-    pthread_mutex_lock(&db_mutex);       // <--- LOCK
+    pthread_mutex_lock(&db_mutex);
     FILE *f = fopen(USER_DB_FILE, "a+"); // Read + Append
     if (!f)
     {
@@ -60,7 +60,7 @@ int db_register_user(const char *username, const char *password)
     char u[50], p[50];
     int exists = 0;
 
-    // 1. Check for duplicates and find the highest ID
+    // Check for duplicates and find the highest ID
     fseek(f, 0, SEEK_SET); // Rewind to start
     while (fscanf(f, "%d %s %s", &id, u, p) != EOF)
     {
@@ -80,24 +80,23 @@ int db_register_user(const char *username, const char *password)
         return -1; // Error: User exists
     }
 
-    // 2. Append new user
+    // Append new user
     int new_id = max_id + 1;
-    // Move pointer to end just in case
     fseek(f, 0, SEEK_END);
     fprintf(f, "%d %s %s\n", new_id, username, password);
 
     fclose(f);
-    pthread_mutex_unlock(&db_mutex); // <--- UNLOCK
+    pthread_mutex_unlock(&db_mutex);
     return new_id;
 }
 
 /**
- * @brief Đổi mật khẩu cho user ID tương ứng
- * @return 0 nếu thành công, -1 nếu thất bại
+ * @brief Change password for user
+ * @return 0 if success, -1 if fail
  */
 int db_change_password(int user_id, const char *new_password)
 {
-    pthread_mutex_lock(&db_mutex); // <--- LOCK
+    pthread_mutex_lock(&db_mutex);
     FILE *f = fopen(USER_DB_FILE, "r");
     FILE *temp = fopen("users.tmp", "w");
 
@@ -111,18 +110,15 @@ int db_change_password(int user_id, const char *new_password)
     char u[50], p[50];
     int found = 0;
 
-    // Đọc từng dòng từ file cũ
     while (fscanf(f, "%d %s %s", &id, u, p) != EOF)
     {
         if (id == user_id)
         {
-            // Nếu khớp ID, ghi mật khẩu MỚI vào file tạm
             fprintf(temp, "%d %s %s\n", id, u, new_password);
             found = 1;
         }
         else
         {
-            // Nếu không khớp, ghi lại dòng cũ
             fprintf(temp, "%d %s %s\n", id, u, p);
         }
     }
@@ -132,8 +128,8 @@ int db_change_password(int user_id, const char *new_password)
 
     if (found)
     {
-        remove(USER_DB_FILE);              // Xóa file cũ
-        rename("users.tmp", USER_DB_FILE); // Đổi tên file tạm thành file chính
+        remove(USER_DB_FILE); 
+        rename("users.tmp", USER_DB_FILE);
         pthread_mutex_unlock(&db_mutex);
         return 0;
     }
@@ -146,11 +142,11 @@ int db_change_password(int user_id, const char *new_password)
 }
 
 /**
- * @brief Xóa user khỏi database
+ * @brief Delete user from database
  */
 int db_delete_user(int user_id)
 {
-    pthread_mutex_lock(&db_mutex); // <--- LOCK
+    pthread_mutex_lock(&db_mutex);
     FILE *f = fopen(USER_DB_FILE, "r");
     FILE *temp = fopen("users.tmp", "w");
     if (!f || !temp)
@@ -171,7 +167,7 @@ int db_delete_user(int user_id)
     {
         if (id == user_id)
         {
-            found = 1; // Bỏ qua dòng này (không ghi vào temp)
+            found = 1;
         }
         else
         {
@@ -198,8 +194,6 @@ int db_delete_user(int user_id)
 }
 
 //--------- GROUP MANAGEMENT ---------
-// Helper struct for group info
-// Only allow 512 users
 
 typedef struct
 {
@@ -215,13 +209,6 @@ typedef struct
     int status;
 } GroupMemberInfo; // 0: Pending, 1: Accepted
 
-// NOTE ON PATHS:
-// The server binary runs from the project root (./bin/server), so the working directory
-// is the project root. All DB file paths use "./data/..." to match USER_DB_FILE.
-
-// Reads all groups from "./data/groups.txt"
-// Returns: count of groups loaded, or -1 on error
-// Param: groups: pointer to array of GroupInfo, max_count: maximum number of groups to read
 int db_read_groups(GroupInfo *groups, int max_count)
 {
     FILE *f = fopen("./data/groups.txt", "r");
@@ -236,9 +223,7 @@ int db_read_groups(GroupInfo *groups, int max_count)
     return count;
 }
 
-// Appends a group to "./data/groups.txt"
-// Returns 0 on success, -1 on error
-// Param: group: pointer to GroupInfo (group_id, name, owner_id)
+
 int db_write_group(const GroupInfo *group)
 {
     // Ensure data directory exists
@@ -260,9 +245,6 @@ int db_write_group(const GroupInfo *group)
     return 0;
 }
 
-// Reads all group members from "./data/group_members.txt"
-// Returns: count of members loaded, or -1 on error
-// Param: members: pointer to array of GroupMemberInfo, max_count: maximum number of members to read
 int db_read_group_members(GroupMemberInfo *members, int max_count)
 {
     FILE *f = fopen("./data/group_members.txt", "r");
@@ -277,9 +259,7 @@ int db_read_group_members(GroupMemberInfo *members, int max_count)
     return count;
 }
 
-// Appends a member to "./data/group_members.txt"
-// Returns 0 on success, -1 on error
-// Param: member: pointer to GroupMemberInfo
+
 int db_write_group_member(const GroupMemberInfo *member)
 {
     // Ensure data directory exists

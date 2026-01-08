@@ -3,18 +3,17 @@
 
 /* ANSI color codes */
 #define CLR_RESET   "\033[0m"
-#define CLR_TITLE   "\033[1;36m"  /* Cyan đậm */
-#define CLR_SECTION "\033[1;33m"  /* Vàng đậm */
-#define CLR_CMD     "\033[1;32m"  /* Xanh lá */
-#define CLR_EX      "\033[0;37m"  /* Xám nhạt */
-#define CLR_WARN    "\033[1;31m"  /* Đỏ đậm */
+#define CLR_TITLE   "\033[1;36m" 
+#define CLR_SECTION "\033[1;33m" 
+#define CLR_CMD     "\033[1;32m"
+#define CLR_EX      "\033[0;37m" 
+#define CLR_WARN    "\033[1;31m"
 
 /**
  * @brief Prints the main menu commands (before login).
  */
 void print_main_menu()
 {
-    /* Clear screen + move cursor home (nếu không thích thì bỏ dòng này) */
     printf("\033[2J\033[H");
 
     printf(CLR_TITLE);

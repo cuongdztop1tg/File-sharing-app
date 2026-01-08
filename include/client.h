@@ -1,7 +1,7 @@
 #ifndef CLIENT_H
 #define CLIENT_H
 
-// --- CLIENT NETWORK FUNCTIONS (client_net.c) ---
+// --- Client network functions (client_net.c) ---
 
 /**
  * @brief Main client loop using select() for I/O multiplexing
@@ -26,7 +26,7 @@ void handle_user_input(int sockfd);
  */
 void print_menu();
 
-// --- CLIENT UI FUNCTIONS (client_ui.c) ---
+// --- Client UI functions (client_ui.c) ---
 
 /**
  * @brief Prints main menu (before login)
@@ -43,7 +43,7 @@ void print_logged_in_menu();
  */
 void print_help();
 
-// --- FILE TRANSFER FUNCTIONS (file_transfer.c OR client_net.c) ---
+// --- File transder functions (file_transfer.c) ---
 
 /**
  * @brief Uploads a file to the server

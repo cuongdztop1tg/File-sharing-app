@@ -14,50 +14,38 @@
 
 #define FILE_STORAGE_PATH "./data/files/"
 
-// Khai báo trước hàm này để các hàm bên dưới có thể gọi nó
+
 int remove_directory_recursive(const char *path);
 Session *find_session(int sockfd);
 void log_activity(const char *msg);
 int remove_directory_recursive(const char *path);
-int check_group_write_permission(int user_id, const char *path); // <-- Add this 
+int check_group_write_permission(int user_id, const char *path);
 int check_group_owner_permission(int user_id, const char *path);
 
-
-// --- HÀM HỖ TRỢ LOGGING ---
-/**
- * @brief Lấy chuỗi thông tin client để ghi log (VD: [127.0.0.1] User 'admin' (ID 1))
- */
 void get_log_prefix(int sockfd, char *buffer) {
     Session *s = find_session(sockfd);
     if (s) {
-        // Nếu user đã login hoặc là guest
         sprintf(buffer, "[%s] User '%s' (ID %d)", s->client_ip, s->username, s->user_id);
     } else {
-        // Trường hợp không tìm thấy session (hiếm gặp)
         sprintf(buffer, "[Unknown] Guest");
     }
 }
 
-// Thêm vào đầu file handle_file.c
 int is_file_busy(const char *filepath) {
     FILE *f = fopen(filepath, "r");
-    if (!f) return 0; // File không mở được (hoặc không tồn tại) -> Coi như không bận
+    if (!f) return 0;
 
     int fd = fileno(f);
-    // Thử lấy LOCK_EX với chế độ LOCK_NB (Non-Blocking)
-    // Nếu không lấy được ngay (do ai đó đang giữ lock) thì trả về -1
     if (flock(fd, LOCK_EX | LOCK_NB) != 0) {
         fclose(f);
-        return 1; // File đang bận (Busy)
+        return 1;
     }
 
-    // Nếu lấy được lock -> File rảnh -> Unlock và trả về 0
     flock(fd, LOCK_UN);
     fclose(f);
-    return 0; // File rảnh
+    return 0;
 }
 
-// 1. Hàm liệt kê file trong thư mục server
 void handle_list_files(int sockfd, char *subpath) {
 
     char log_prefix[256];
@@ -65,7 +53,7 @@ void handle_list_files(int sockfd, char *subpath) {
 
     char log_msg[512];
     sprintf(log_msg, "%s requested LIST_FILES path='%s'", log_prefix, subpath ? subpath : "root");
-    log_activity(log_msg); // Ghi log yêu cầu
+    log_activity(log_msg);
 
     DIR *d;
     struct dirent *dir;
@@ -73,7 +61,6 @@ void handle_list_files(int sockfd, char *subpath) {
     char full_path[512];
     
 
-    // Bảo mật: Chặn người dùng truy cập ngược ra ngoài bằng ".."
     if (subpath != NULL && strstr(subpath, "..")) {
         char *err = "Error: Invalid path (Access denied).";
         send_packet(sockfd, MSG_ERROR, err, strlen(err));
@@ -83,8 +70,6 @@ void handle_list_files(int sockfd, char *subpath) {
         return;
     }
 
-    // Xử lý đường dẫn: data/files/ + subpath
-    // Nếu subpath rỗng hoặc null -> Liệt kê thư mục gốc
     if (subpath != NULL && strlen(subpath) > 0) {
         sprintf(full_path, "%s%s", FILE_STORAGE_PATH, subpath);
     } else {
@@ -93,15 +78,12 @@ void handle_list_files(int sockfd, char *subpath) {
 
     d = opendir(full_path);
     if (d) {
-        // Thêm dòng tiêu đề để dễ nhìn
         sprintf(file_list, "--- Content of: /%s ---\n", (subpath ? subpath : "root"));
 
         while ((dir = readdir(d)) != NULL) {
-            // Bỏ qua . và ..
             if (strcmp(dir->d_name, ".") != 0 && strcmp(dir->d_name, "..") != 0) {
                 strcat(file_list, dir->d_name);
                 
-                // Nếu là folder, thêm dấu / để dễ phân biệt
                 struct stat st;
                 char item_path[512];
                 sprintf(item_path, "%s/%s", full_path, dir->d_name);
@@ -114,20 +96,17 @@ void handle_list_files(int sockfd, char *subpath) {
         }
         closedir(d);
         
-        // Nếu chuỗi rỗng (folder không có file gì)
         if (strlen(file_list) < 30) strcat(file_list, "(Empty folder)");
 
         send_packet(sockfd, MSG_LIST_RESPONSE, file_list, strlen(file_list));
     } else {
         char *err = "Error: Folder not found.";
         send_packet(sockfd, MSG_ERROR, err, strlen(err));
-        // Log lỗi
         sprintf(log_msg, "%s - LIST failed: Folder not found '%s'", log_prefix, subpath);
         log_activity(log_msg);
     }
 }
 
-// 2. Hàm xử lý nhận file từ Client (Upload)
 void handle_upload_request(int sockfd, char *payload) {
 
     char log_prefix[256];
@@ -136,7 +115,6 @@ void handle_upload_request(int sockfd, char *payload) {
     char filename[100];
     long filesize = 0;
     
-    // Payload format: "filename filesize"
     sscanf(payload, "%s %ld", filename, &filesize);
 
     Session *s = find_session(sockfd);
@@ -155,7 +133,7 @@ void handle_upload_request(int sockfd, char *payload) {
     char filepath[200];
     sprintf(filepath, "%s%s", FILE_STORAGE_PATH, filename);
 
-    FILE *f = fopen(filepath, "wb"); // Mở chế độ Binary write
+    FILE *f = fopen(filepath, "wb");
     if (!f) {
         send_packet(sockfd, MSG_ERROR, "Server cannot create file", 25);
         sprintf(log_msg, "%s - UPLOAD failed: Cannot create file on disk", log_prefix);
@@ -163,20 +141,16 @@ void handle_upload_request(int sockfd, char *payload) {
         return;
     }
 
-    int fd = fileno(f); // Lấy file descriptor
-    if (flock(fd, LOCK_EX) != 0) { // LOCK_EX: Exclusive Lock (Khóa độc quyền)
+    int fd = fileno(f);
+    if (flock(fd, LOCK_EX) != 0) {
         perror("Lock failed");
         fclose(f);
     return;
     }
     
 
-    // Báo cho Client biết Server đã sẵn sàng nhận
     send_packet(sockfd, MSG_SUCCESS, "Ready to receive", 16);
 
-    // --- BẮT ĐẦU VÒNG LẶP NHẬN FILE (Blocking) ---
-    // Lưu ý: Server sẽ tạm thời chỉ phục vụ việc nhận file này 
-    // cho client này cho đến khi xong.
     int msg_type;
     char buffer[BUFFER_SIZE];
     long total_received = 0;
@@ -193,21 +167,19 @@ void handle_upload_request(int sockfd, char *payload) {
         } 
         else if (msg_type == MSG_FILE_END) {
             printf("Upload completed: %s (%ld bytes)\n", filename, total_received);
-            break; // Kết thúc
+            break;
         }
         else {
-            // Nhận tin nhắn rác hoặc lỗi
             break;
         }
     }
     
     fclose(f);
     
-    // Gửi xác nhận cuối cùng
     char success_msg[100];
     sprintf(success_msg, "File uploaded successfully: %s", filename);
     send_packet(sockfd, MSG_SUCCESS, success_msg, strlen(success_msg));
-    // Log hoàn tất
+
     sprintf(log_msg, "%s - UPLOAD completed: '%s' (Received %ld bytes)", log_prefix, filename, total_received);
     log_activity(log_msg);
 }
@@ -223,7 +195,6 @@ void handle_download_request(int sockfd, char *filename) {
     char filepath[256];
     sprintf(filepath, "%s%s", FILE_STORAGE_PATH, filename);
 
-    // 1. Kiểm tra sự tồn tại và loại file (File hay Folder)
     struct stat st;
     if (stat(filepath, &st) != 0) {
         char *err = "File not found.";
@@ -241,7 +212,6 @@ void handle_download_request(int sockfd, char *filename) {
         return;
     }
 
-    // 2. Mở file để đọc
     FILE *f = fopen(filepath, "rb");
     if (!f) {
         char *err = "Access denied or file locked.";
@@ -250,22 +220,16 @@ void handle_download_request(int sockfd, char *filename) {
         log_activity(log_msg);
         return;
     }
-    // Khóa Shared (Cho phép nhiều người cùng download, nhưng chặn ai đó đang ghi/xóa)
     int fd = fileno(f);
-    if (flock(fd, LOCK_SH) != 0) { // LOCK_SH: Shared Lock (Nhiều người được đọc)
-    // Nếu file đang bị khóa bởi LOCK_EX (đang có người upload/sửa), lệnh này sẽ đợi
+    if (flock(fd, LOCK_SH) != 0) {
     }
 
-    // 1. Gửi thông báo chấp nhận Download + Kích thước file (để Client hiện thanh tiến trình nếu muốn)
-    // struct stat st;
-    // stat(filepath, &st);
     long filesize = st.st_size;
     
     char msg[100];
     sprintf(msg, "%ld", filesize);
     send_packet(sockfd, MSG_SUCCESS, msg, strlen(msg));
 
-    // 2. Bắt đầu gửi dữ liệu
     printf("[INFO] Sending file '%s' to Client...\n", filename);
     char buffer[BUFFER_SIZE];
     size_t bytes_read;
@@ -276,7 +240,6 @@ void handle_download_request(int sockfd, char *filename) {
         total_sent += bytes_read;
     }
     
-    // 3. Gửi tín hiệu kết thúc
     send_packet(sockfd, MSG_FILE_END, "", 0);
     fclose(f);
     sprintf(log_msg, "%s - DOWNLOAD success: Sent '%s' (%ld bytes)", log_prefix, filename, total_sent);
@@ -284,14 +247,13 @@ void handle_download_request(int sockfd, char *filename) {
     printf("[INFO] File sent successfully.\n");
 }
 
-// Cập nhật hàm handle_delete_file hiện tại của bạn
+
 void handle_delete_item(int sockfd, char *filename) {
     char log_prefix[256];
     get_log_prefix(sockfd, log_prefix);
 
     Session *s = find_session(sockfd);
     if (s) {
-        // Kiểm tra xem file có thuộc nhóm nào không
         if (strstr(filename, "Group_")) {
             if (!check_group_owner_permission(s->user_id, filename)) {
                 send_packet(sockfd, MSG_ERROR, "Access Denied: Only Group Owner can delete", 100);
@@ -301,7 +263,6 @@ void handle_delete_item(int sockfd, char *filename) {
                 return;
             }
         }
-        // Nếu không phải file nhóm thì thôi (hoặc check quyền sở hữu cá nhân nếu muốn)
     }
     
     char log_msg[512];
@@ -314,7 +275,7 @@ void handle_delete_item(int sockfd, char *filename) {
     
 
     struct stat st;
-    if (stat(filepath, &st) == 0 && S_ISREG(st.st_mode)) { // Chỉ check lock với File
+    if (stat(filepath, &st) == 0 && S_ISREG(st.st_mode)) {
         if (is_file_busy(filepath)) {
             send_packet(sockfd, MSG_ERROR, "Cannot delete: File is being used by another user.", 50);
             return;
@@ -348,7 +309,6 @@ void handle_delete_item(int sockfd, char *filename) {
 }
 
 
-// --- XỬ LÝ 1: RENAME (Đổi tên tại chỗ) ---
 void handle_rename_item(int sockfd, char *payload) {
     char log_prefix[256];
     get_log_prefix(sockfd, log_prefix);
@@ -359,20 +319,10 @@ void handle_rename_item(int sockfd, char *payload) {
         return;
     }
 
-    // --- [THÊM CHECK QUYỀN] ---
     Session *s = find_session(sockfd);
     
-    // Rename thực chất là move tại chỗ, cần check cả tên cũ và tên mới
-    // đề phòng trường hợp rename từ "root/file.txt" thành "Group_1/file.txt" (Hack để đẩy file vào nhóm)
-    // [SỬA ĐỔI]: Kiểm tra quyền Owner cho cả tên cũ (nguồn) và tên mới (đích)
     if (s) {
-        // Nếu đụng đến file trong Group, phải là Owner
         if ((strstr(old_name, "Group_") || strstr(new_name, "Group_"))) {
-             // Logic chặt chẽ: 
-             // 1. Muốn đổi tên file trong nhóm -> Phải là Owner
-             // 2. Muốn biến file thường thành file nhóm (Move vào) -> Cần check quyền ghi (Member là đủ)
-             // Nhưng ở đây ta đang nói về RENAME (Đổi tên/Di chuyển nội bộ), nên tốt nhất bắt Owner
-             
              if (!check_group_owner_permission(s->user_id, old_name)) {
                 send_packet(sockfd, MSG_ERROR, "Access Denied: Only Owner can rename group files", 100);
                 return;
@@ -394,7 +344,6 @@ void handle_rename_item(int sockfd, char *payload) {
         return;
     }
 
-    // 1. Check nguồn
     if (access(old_path, F_OK) != 0) {
         send_packet(sockfd, MSG_ERROR, "File/Folder not found", 21);
         sprintf(log_msg, "%s - RENAME failed", log_prefix);
@@ -402,7 +351,6 @@ void handle_rename_item(int sockfd, char *payload) {
         return;
     }
 
-    // 2. Check đích (Chặn ghi đè)
     if (access(new_path, F_OK) == 0) {
         send_packet(sockfd, MSG_ERROR, "New name already exists", 23);
         sprintf(log_msg, "%s - RENAME failed", log_prefix);
@@ -410,14 +358,12 @@ void handle_rename_item(int sockfd, char *payload) {
         return;
     }
 
-    // 3. Thực hiện
     if (rename(old_path, new_path) == 0) {
         send_packet(sockfd, MSG_SUCCESS, "Rename successful", 17);
         sprintf(log_msg, "%s - RENAME success", log_prefix);
         log_activity(log_msg);
     } else {
         send_packet(sockfd, MSG_ERROR, "Rename failed", 13);
-        // perror("Rename error");
         sprintf(log_msg, "%s - RENAME failed", log_prefix);
         log_activity(log_msg);
     }
@@ -429,17 +375,12 @@ void handle_move_item(int sockfd, char *payload) {
 
     char src_name[100], dest_folder_input[100];
     
-    // Payload: "nguồn  đích"
-    // Ví dụ 1: "myfolder  backup_folder" (Move folder vào folder)
-    // Ví dụ 2: "sub/file.txt  .."        (Move file ra ngoài 1 cấp so với thư mục sub)
     if (sscanf(payload, "%s %s", src_name, dest_folder_input) < 2) {
         send_packet(sockfd, MSG_ERROR, "Usage: MOVE <source> <dest_folder>", 32);
         return;
     }
     Session *s = find_session(sockfd);
     
-    // 1. Kiểm tra quyền NGUỒN (Source)
-    // Ngăn chặn việc lấy file từ nhóm mà mình không tham gia để move đi chỗ khác
     if (s && !check_group_write_permission(s->user_id, src_name)) {
         send_packet(sockfd, MSG_ERROR, "Access Denied: You cannot move files from this group", 52);
         char log_msg[512];
@@ -448,8 +389,6 @@ void handle_move_item(int sockfd, char *payload) {
         return;
     }
 
-    // 2. Kiểm tra quyền ĐÍCH (Destination)
-    // Ngăn chặn việc ném file vào nhóm mà mình không tham gia
     if (s && !check_group_write_permission(s->user_id, dest_folder_input)) {
         send_packet(sockfd, MSG_ERROR, "Access Denied: You cannot move files to this group", 50);
         char log_msg[512];
@@ -458,18 +397,15 @@ void handle_move_item(int sockfd, char *payload) {
         return;
     }
 
-    // 1. Dựng đường dẫn nguồn (Source Path)
     char src_path[PATH_MAX];
     snprintf(src_path, sizeof(src_path), "%s%s", FILE_STORAGE_PATH, src_name);
 
-    // Kiểm tra nguồn tồn tại không
     struct stat st_src;
     if (stat(src_path, &st_src) != 0) {
         send_packet(sockfd, MSG_ERROR, "Source not found", 16);
         return;
     }
 
-    // Nếu nguồn là File, kiểm tra xem có đang bận không
     if (S_ISREG(st_src.st_mode)) {
         if (is_file_busy(src_path)) {
             send_packet(sockfd, MSG_ERROR, "Cannot move: File is being used by another user.", 50);
@@ -477,30 +413,22 @@ void handle_move_item(int sockfd, char *payload) {
         }
     }
 
-    // 2. Xử lý đường dẫn đích (Dest Path) & Hỗ trợ ".."
-    // Bước A: Tạo đường dẫn thô
     char raw_dest_path[PATH_MAX];
     snprintf(raw_dest_path, sizeof(raw_dest_path), "%s%s", FILE_STORAGE_PATH, dest_folder_input);
 
-    // Bước B: Dùng realpath để giải quyết các dấu ".." và "."
     char resolved_dest_path[PATH_MAX];
     char resolved_storage_root[PATH_MAX];
 
-    // Lấy đường dẫn tuyệt đối của thư mục gốc để so sánh bảo mật
     if (realpath(FILE_STORAGE_PATH, resolved_storage_root) == NULL) {
         perror("Server Error: Cannot resolve storage root");
         return; 
     }
 
-    // Lấy đường dẫn tuyệt đối của đích đến
     if (realpath(raw_dest_path, resolved_dest_path) == NULL) {
-        // Nếu đích không tồn tại (realpath fail), báo lỗi ngay vì MOVE cần folder đích phải có trước
         send_packet(sockfd, MSG_ERROR, "Destination folder not found or invalid", 50);
         return;
     }
 
-    // Bước C: BẢO MẬT - Chống Hack "Move ra ngoài Root"
-    // So sánh xem đường dẫn đích có bắt đầu bằng đường dẫn gốc không
     if (strncmp(resolved_dest_path, resolved_storage_root, strlen(resolved_storage_root)) != 0) {
         send_packet(sockfd, MSG_ERROR, "Access Denied: Cannot move out of storage root", 50);
         char log_msg[512];
@@ -509,23 +437,18 @@ void handle_move_item(int sockfd, char *payload) {
         return;
     }
 
-    // 3. Tạo đường dẫn đích cuối cùng
-    // Logic: Đích cuối = Thư mục đích (đã resolve) + / + Tên file/folder nguồn
     char *filename_only = strrchr(src_name, '/');
-    if (filename_only) filename_only++; // Lấy phần tên sau dấu / cuối cùng
+    if (filename_only) filename_only++;
     else filename_only = src_name;
 
     char final_dest_path[PATH_MAX];
     snprintf(final_dest_path, sizeof(final_dest_path), "%s/%s", resolved_dest_path, filename_only);
 
-    // 4. Kiểm tra trùng tên tại đích
     if (access(final_dest_path, F_OK) == 0) {
         send_packet(sockfd, MSG_ERROR, "Item already exists in destination", 50);
         return;
     }
 
-    // 5. Thực hiện MOVE (Rename)
-    // Hàm rename() của C xử lý tốt cả File và Folder
     if (rename(src_path, final_dest_path) == 0) {
         send_packet(sockfd, MSG_SUCCESS, "Move successful", 15);
         
@@ -533,9 +456,7 @@ void handle_move_item(int sockfd, char *payload) {
         sprintf(log_msg, "%s - MOVE success: '%s' -> '%s'", log_prefix, src_name, dest_folder_input);
         log_activity(log_msg);
     } else {
-        // Xử lý lỗi cụ thể
         if (errno == EINVAL) {
-            // Lỗi này xảy ra khi cố move Folder Cha vào Folder Con của chính nó
             send_packet(sockfd, MSG_ERROR, "Invalid move: Cannot move folder into itself", 50);
         } else if (errno == EXDEV) {
             send_packet(sockfd, MSG_ERROR, "Cannot move across different disk partitions", 50);
@@ -546,13 +467,11 @@ void handle_move_item(int sockfd, char *payload) {
     }
 }
 
-// Nếu muốn làm thêm Tạo thư mục (Module 3 có yêu cầu)
 void handle_create_folder(int sockfd, char *foldername) {
     char log_prefix[256];
     get_log_prefix(sockfd, log_prefix);
 
     Session *s = find_session(sockfd);
-    // Lưu ý: foldername ở đây có thể là "Group_1/NewFolder"
     if (s && !check_group_write_permission(s->user_id, foldername)) {
         send_packet(sockfd, MSG_ERROR, "Access Denied: You are not a member of this group", 48);
         char log_msg[512];
@@ -568,11 +487,10 @@ void handle_create_folder(int sockfd, char *foldername) {
     char path[256];
     sprintf(path, "%s%s", FILE_STORAGE_PATH, foldername);
     
-    // 0777 là quyền truy cập (Read/Write/Execute)
 #ifdef _WIN32
-    if (_mkdir(path) == 0) // Windows dùng _mkdir
+    if (_mkdir(path) == 0)
 #else
-    if (mkdir(path, 0777) == 0) // Linux/Mac dùng mkdir
+    if (mkdir(path, 0777) == 0)
 #endif
     {
         send_packet(sockfd, MSG_SUCCESS, "Folder created.", 15);
@@ -585,8 +503,6 @@ void handle_create_folder(int sockfd, char *foldername) {
     }
 }
 
-
-// Hàm phụ trợ để xóa đệ quy (không public ra ngoài, chỉ dùng nội bộ)
 int remove_directory_recursive(const char *path) {
     DIR *d = opendir(path);
     size_t path_len = strlen(path);
@@ -600,7 +516,6 @@ int remove_directory_recursive(const char *path) {
             char *buf;
             size_t len;
 
-            // Bỏ qua . và ..
             if (!strcmp(p->d_name, ".") || !strcmp(p->d_name, ".."))
                 continue;
 
@@ -613,9 +528,9 @@ int remove_directory_recursive(const char *path) {
 
                 if (!stat(buf, &statbuf)) {
                     if (S_ISDIR(statbuf.st_mode))
-                        r2 = remove_directory_recursive(buf); // Đệ quy nếu là folder
+                        r2 = remove_directory_recursive(buf); 
                     else
-                        r2 = unlink(buf); // Xóa nếu là file
+                        r2 = unlink(buf);
                 }
                 free(buf);
             }
@@ -625,7 +540,7 @@ int remove_directory_recursive(const char *path) {
     }
 
     if (!r)
-        r = rmdir(path); // Cuối cùng xóa thư mục rỗng
+        r = rmdir(path);
     return r;
 }
 
@@ -641,34 +556,30 @@ int copy_single_file(const char *src_path, const char *dest_path) {
     }
     flock(fileno(f_dest), LOCK_EX);
 
-    char buffer[4096]; // Chunk 4KB
+    char buffer[4096];
     size_t n;
     while ((n = fread(buffer, 1, sizeof(buffer), f_src)) > 0) {
         if (fwrite(buffer, 1, n, f_dest) != n) {
             fclose(f_src);
             fclose(f_dest);
-            return -1; // Lỗi ghi đĩa đầy hoặc lỗi io
+            return -1;
         }
     }
 
     fclose(f_src);
     fclose(f_dest);
-    return 0; // Success
+    return 0;
 }
 
-// Hàm đệ quy: Copy folder và toàn bộ nội dung
 int copy_recursive(const char *src, const char *dest) {
     struct stat st;
     if (stat(src, &st) != 0) return -1;
 
-    // 1. Nếu là File -> Copy file thường
     if (S_ISREG(st.st_mode)) {
         return copy_single_file(src, dest);
     }
 
-    // 2. Nếu là Folder -> Tạo folder đích và đệ quy
     if (S_ISDIR(st.st_mode)) {
-        // Tạo folder đích (Linux: 0755, Win: _mkdir)
         #ifdef _WIN32
             _mkdir(dest);
         #else
@@ -680,7 +591,6 @@ int copy_recursive(const char *src, const char *dest) {
 
         struct dirent *entry;
         while ((entry = readdir(d)) != NULL) {
-            // Bỏ qua . và ..
             if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
                 continue;
 
@@ -690,23 +600,20 @@ int copy_recursive(const char *src, const char *dest) {
             snprintf(next_src, sizeof(next_src), "%s/%s", src, entry->d_name);
             snprintf(next_dest, sizeof(next_dest), "%s/%s", dest, entry->d_name);
 
-            // Gọi đệ quy
             copy_recursive(next_src, next_dest);
         }
         closedir(d);
         return 0;
     }
-    return -1; // Không phải file/folder (VD: symlink, device...)
+    return -1;
 }
 
 
-// --- XỬ LÝ 3: COPY (Đệ quy & An toàn) ---
 void handle_copy_file(int sockfd, char *payload) {
     char log_prefix[256];
     get_log_prefix(sockfd, log_prefix);
 
     char src_name[100], dest_input[100];
-    // Payload: "nguồn  đích"
     if (sscanf(payload, "%s %s", src_name, dest_input) < 2) {
         send_packet(sockfd, MSG_ERROR, "Usage: COPY <source> <dest_path>", 30);
         return;
@@ -714,21 +621,16 @@ void handle_copy_file(int sockfd, char *payload) {
 
     Session *s = find_session(sockfd);
     
-    // Check nguồn (Có được đọc file từ nhóm này để copy không?)
-    // Lưu ý: Tùy chính sách, có thể cho phép copy ra nhưng không cho copy vào. 
-    // Nhưng để an toàn nhất thì chặn cả hai nếu không phải member.
     if (s && !check_group_write_permission(s->user_id, src_name)) {
          send_packet(sockfd, MSG_ERROR, "Access Denied: Source group restricted", 38);
          return;
     }
 
-    // Check đích (Có được tạo file mới trong nhóm này không?)
     if (s && !check_group_write_permission(s->user_id, dest_input)) {
          send_packet(sockfd, MSG_ERROR, "Access Denied: Destination group restricted", 43);
          return;
     }
 
-    // 1. Resolve Source Path
     char src_path[PATH_MAX];
     snprintf(src_path, sizeof(src_path), "%s%s", FILE_STORAGE_PATH, src_name);
 
@@ -738,59 +640,46 @@ void handle_copy_file(int sockfd, char *payload) {
         return;
     }
 
-    // 2. Resolve Destination Path
     char raw_dest_base[PATH_MAX];
     snprintf(raw_dest_base, sizeof(raw_dest_base), "%s%s", FILE_STORAGE_PATH, dest_input);
 
     char final_dest_path[PATH_MAX];
     struct stat st_dest;
 
-    // Logic xác định đích đến cuối cùng
     if (stat(raw_dest_base, &st_dest) == 0 && S_ISDIR(st_dest.st_mode)) {
-        // Nếu đích là Folder có sẵn -> Copy vào bên trong nó
         char *filename_only = strrchr(src_name, '/');
         if (filename_only) filename_only++; 
         else filename_only = src_name;
         
         snprintf(final_dest_path, sizeof(final_dest_path), "%s/%s", raw_dest_base, filename_only);
     } else {
-        // Đích chưa tồn tại (Rename copy) hoặc là file
         strcpy(final_dest_path, raw_dest_base);
     }
 
-    // 3. Bảo mật: Chống hack ".."
     char resolved_storage_root[PATH_MAX];
     realpath(FILE_STORAGE_PATH, resolved_storage_root);
     
-    // [FIX]: Đã xóa dòng 'char resolved_final_dest[PATH_MAX];' gây warning ở đây
-    
-    // Kiểm tra nhanh xem user có dùng ".." để leo ra ngoài không
     if (strstr(dest_input, "..")) {
          send_packet(sockfd, MSG_ERROR, "Security Violation: '..' not allowed", 32);
          return;
     }
 
-    // 4. NGOẠI LỆ 1: Check Trùng Lặp
     if (access(final_dest_path, F_OK) == 0) {
         send_packet(sockfd, MSG_ERROR, "Destination already exists (No Overwrite)", 40);
         return;
     }
 
-    // 5. NGOẠI LỆ 2: Copy Folder vào con của chính nó (Infinite Loop)
     char resolved_src[PATH_MAX];
     if (realpath(src_path, resolved_src)) {
         char abs_dest[PATH_MAX];
-        // Giả lập đường dẫn tuyệt đối của đích
         snprintf(abs_dest, sizeof(abs_dest), "%s/%s", resolved_storage_root, dest_input);
         
-        // Nếu đường dẫn đích bắt đầu bằng đường dẫn nguồn -> Lỗi
         if (strncmp(abs_dest, resolved_src, strlen(resolved_src)) == 0) {
              send_packet(sockfd, MSG_ERROR, "Cannot copy folder into its own subdirectory", 43);
              return;
         }
     }
 
-    // 6. Thực hiện Copy
     char log_msg[512];
     sprintf(log_msg, "%s requesting COPY '%s' -> '%s'", log_prefix, src_name, dest_input);
     log_activity(log_msg);
@@ -806,55 +695,41 @@ void handle_copy_file(int sockfd, char *payload) {
     }
 }
 
-// Hàm kiểm tra: User có thuộc nhóm trong đường dẫn không?
-// Trả về: 1 (Cho phép), 0 (Từ chối)
 int check_group_write_permission(int user_id, const char *path) {
     int group_id;
     
-    // Kiểm tra xem đường dẫn có bắt đầu bằng "Group_" hay không
-    // Ví dụ path: "Group_1/baitap.txt" hoặc "Group_10/sub/file"
     if (sscanf(path, "Group_%d/", &group_id) == 1 || 
         (strncmp(path, "Group_", 6) == 0 && sscanf(path, "Group_%d", &group_id) == 1)) {
         
-        // Đường dẫn thuộc về một nhóm. Kiểm tra xem user có trong nhóm đó không.
         GroupMemberInfo members[512];
         int count = db_read_group_members(members, 512);
         
         for (int i = 0; i < count; i++) {
-            // User phải khớp ID, đúng Group ID và Status = 1 (Đã được duyệt)
             if (members[i].group_id == group_id && 
                 members[i].user_id == user_id && 
                 members[i].status == 1) {
-                return 1; // Là thành viên -> Cho phép
+                return 1;
             }
         }
         
-        // Nếu vòng lặp kết thúc mà không thấy -> Không phải thành viên
         return 0; 
     }
     
-    // Nếu file nằm ở thư mục gốc (không thuộc Group_X nào), 
-    // ta có thể cho phép hoặc chặn tùy policy. Ở đây giả sử cho phép user upload ra ngoài root.
     return 1; 
 }
 
 
-// Hàm kiểm tra: User có phải là TRƯỞNG NHÓM của file/folder này không?
-// Trả về: 1 (Là Owner - Cho phép), 0 (Không phải Owner - Chặn)
 int check_group_owner_permission(int user_id, const char *path) {
     int group_id;
     
-    // Kiểm tra xem đường dẫn có thuộc về Group nào không
     if (sscanf(path, "Group_%d/", &group_id) == 1 || 
         (strncmp(path, "Group_", 6) == 0 && sscanf(path, "Group_%d", &group_id) == 1)) {
         
-        // Đọc danh sách Groups để tìm Owner
         GroupInfo groups[256];
         int count = db_read_groups(groups, 256);
         
         for (int i = 0; i < count; i++) {
             if (groups[i].group_id == group_id) {
-                // Nếu User ID trùng với Owner ID của nhóm -> OK
                 if (groups[i].owner_id == user_id) {
                     return 1;
                 } else {
@@ -862,9 +737,8 @@ int check_group_owner_permission(int user_id, const char *path) {
                 }
             }
         }
-        return 0; // Không tìm thấy nhóm
+        return 0;
     }
     
-    // Nếu file không thuộc nhóm (file cá nhân ở root), cho phép xóa chính chủ
     return 1; 
 }

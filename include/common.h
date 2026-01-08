@@ -24,10 +24,10 @@ typedef struct {
     char password[50];
 } User;
 
-// Session model for Runtime (RAM)
+// Session model for Runtime
 typedef struct {
     int socket_fd;          // Socket descriptor
-    int user_id;            // User ID (if logged in), -1 if Guest
+    int user_id;            // User ID
     char username[50];      // Username
     char client_ip[INET_ADDRSTRLEN]; // Client IP Address
     int is_logged_in;       // 0: No, 1: Yes

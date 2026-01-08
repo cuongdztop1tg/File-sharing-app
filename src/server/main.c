@@ -80,7 +80,7 @@ int main() {
             continue;
         }
 
-        // --- ADD SESSION HERE ---
+        // --- ADD SESSION ---
         add_session(client_sock, client_addr);
         
         char log_msg[100];

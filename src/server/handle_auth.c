@@ -13,29 +13,27 @@ Session *find_session(int sockfd);
 void log_activity(const char *msg);
 
 void handle_login(int sockfd, char *payload) {
-    // 1. Lấy thông tin Session hiện tại
+    // Get user session
     Session *sess = find_session(sockfd);
     
-    // Safety check (hiếm khi xảy ra nếu code chạy đúng)
+    // Safety check
     if (sess == NULL) {
         send_packet(sockfd, MSG_ERROR, "Session Error", 13);
         return;
     }
 
-    // --- LOGIC MỚI: KIỂM TRA ĐÃ LOGIN CHƯA ---
+    // Check if the user already logged in
     if (sess->is_logged_in) {
         char msg[256];
         sprintf(msg, "Login failed: You are already logged in as '%s'. Please LOGOUT first.", sess->username);
         send_packet(sockfd, MSG_ERROR, msg, strlen(msg));
         
-        // Ghi log cảnh báo
         char log_msg[300];
         sprintf(log_msg, "User '%s' (ID %d) attempted to re-login without logout.", sess->username, sess->user_id);
         log_activity(log_msg);
         
-        return; // <--- Dừng hàm tại đây, không xử lý tiếp
+        return;
     }
-    // -----------------------------------------
 
     char user[50], pass[50];
     
@@ -46,7 +44,6 @@ void handle_login(int sockfd, char *payload) {
         return;
     }
 
-    // ... (Phần code kiểm tra DB cũ giữ nguyên ở dưới) ...
     int user_id = db_check_login(user, pass);
     
     if (user_id != -1) {
@@ -106,10 +103,10 @@ void handle_register(int sockfd, char *payload) {
 }
 
 /**
- * @brief Xử lý yêu cầu đăng xuất từ client
+ * @brief Handle user logout request
  */
 void handle_logout(int sockfd, char *payload) {
-    // 1. Tìm session của socket hiện tại
+    // Find user session
     Session *sess = find_session(sockfd);
     
     // Safety check
@@ -117,14 +114,14 @@ void handle_logout(int sockfd, char *payload) {
         return; 
     }
 
-    // 2. Kiểm tra xem user đã login chưa
+    // Check if user already logged in
     if (sess->is_logged_in == 0) {
         char *msg = "Logout failed: You are not logged in.";
         send_packet(sockfd, MSG_ERROR, msg, strlen(msg));
         return;
     }
 
-    // 3. Thực hiện Logout: Reset thông tin Session về trạng thái Guest
+    // CHange session status
     int old_uid = sess->user_id;
     char old_user[50];
     strcpy(old_user, sess->username);
@@ -133,12 +130,12 @@ void handle_logout(int sockfd, char *payload) {
     sess->is_logged_in = 0;
     strcpy(sess->username, "Guest");
 
-    // 4. Gửi phản hồi thành công
+    // Send success message
     char msg[100];
     sprintf(msg, "Goodbye %s! You have been logged out.", old_user);
     send_packet(sockfd, MSG_SUCCESS, msg, strlen(msg));
 
-    // 5. Ghi log
+    // Log
     char log_msg[200];
     sprintf(log_msg, "User '%s' (ID %d) logged out.", old_user, old_uid);
     log_activity(log_msg);
@@ -147,7 +144,7 @@ void handle_logout(int sockfd, char *payload) {
 void handle_change_password(int sockfd, char *payload) {
     Session *sess = find_session(sockfd);
     
-    // 1. Kiểm tra đã login chưa
+    // Check if the user is already logged in
     if (!sess || !sess->is_logged_in) {
         send_packet(sockfd, MSG_ERROR, "Error: You must login first.", 50);
         return;
@@ -161,12 +158,9 @@ void handle_change_password(int sockfd, char *payload) {
         return;
     }
 
-    // 3. Xác thực mật khẩu cũ (Tận dụng hàm db_check_login có sẵn)
-    // db_check_login trả về ID nếu đúng user/pass
     int check_id = db_check_login(sess->username, old_pass);
     
     if (check_id == sess->user_id) {
-        // 4. Nếu mật khẩu cũ đúng, tiến hành cập nhật
         if (db_change_password(sess->user_id, new_pass) == 0) {
             char msg[100];
             sprintf(msg, "Password changed successfully for user '%s'.", sess->username);
@@ -182,7 +176,6 @@ void handle_change_password(int sockfd, char *payload) {
     }
 }
 
-// --- XỬ LÝ XÓA TÀI KHOẢN ---
 void handle_delete_account(int sockfd, char *payload) {
     Session *sess = find_session(sockfd);
     if (!sess || !sess->is_logged_in) {
@@ -191,16 +184,14 @@ void handle_delete_account(int sockfd, char *payload) {
     }
 
     char confirm_pass[50];
-    // Yêu cầu nhập mật khẩu để xác nhận xóa
     if (sscanf(payload, "%s", confirm_pass) < 1) {
         send_packet(sockfd, MSG_ERROR, "Confirm password required", 25);
         return;
     }
 
-    // Xác thực mật khẩu
     int check_id = db_check_login(sess->username, confirm_pass);
     if (check_id == sess->user_id) {
-        // Thực hiện xóa
+        // Perform deletion
         if (db_delete_user(sess->user_id) == 0) {
             char log_msg[200];
             sprintf(log_msg, "User '%s' (ID %d) deleted their account.", sess->username, sess->user_id);

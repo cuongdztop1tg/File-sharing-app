@@ -41,9 +41,9 @@ void client_main_loop(int sockfd)
         FD_SET(sockfd, &read_fds);       // Watch the socket (Server messages)
         FD_SET(STDIN_FILENO, &read_fds); // Watch the keyboard (User input)
 
-        max_fd = sockfd; // STDIN is 0, so sockfd is usually larger
+        max_fd = sockfd;
 
-        // 2. Wait for activity (Blocking call)
+        // 2. Wait for activity
         int activity = select(max_fd + 1, &read_fds, NULL, NULL, NULL);
 
         if ((activity < 0))
@@ -67,8 +67,6 @@ void client_main_loop(int sockfd)
         }
     }
 }
-
-// --- HANDLERS ---
 
 /**
  * @brief Processes messages received from the server
@@ -101,7 +99,7 @@ void handle_server_message(int sockfd)
         printf("[ERROR] %s\n", buffer);
         break;
 
-    case MSG_LOGIN: // Server might send back login info
+    case MSG_LOGIN:
         printf("[LOGIN] %s\n", buffer);
         break;
 
@@ -111,15 +109,11 @@ void handle_server_message(int sockfd)
     case MSG_LIST_RESPONSE:
         printf("\n--- SERVER FILES ---\n%s\n--------------------\n", buffer);
         break;
-
-        // Add other cases here (File transfer, etc.)
-
     default:
         printf("[INFO] Received MSG Type %d: %s\n", msg_type, buffer);
         break;
     }
 
-    // Repaint prompt after message
     printf("> ");
     fflush(stdout);
 }
@@ -144,7 +138,7 @@ void handle_user_input(int sockfd)
     if (strlen(input) == 0)
         return;
 
-    // Parse command: splits "LOGIN user pass" -> cmd="LOGIN", arg1="user", arg2="pass"
+    // Parse command
     int args = sscanf(input, "%s %s %s", command, arg1, arg2);
 
     if (strcasecmp(command, "EXIT") == 0)
@@ -188,7 +182,7 @@ void handle_user_input(int sockfd)
     }
     else if (strcasecmp(command, "LOGOUT") == 0)
     {
-        // Gửi yêu cầu logout, không cần payload
+        // Send logout request
         send_packet(sockfd, MSG_LOGOUT, "", 0);
     }
     else if (strcasecmp(command, "CHANGE_PASS") == 0)
@@ -343,7 +337,7 @@ void handle_user_input(int sockfd)
         {
             send_packet(sockfd, MSG_LIST_FILES, arg1, strlen(arg1));
         }
-        // Nếu user chỉ gõ "LIST" -> Gửi chuỗi rỗng ""
+        // If user only type "LIST"
         else
         {
             send_packet(sockfd, MSG_LIST_FILES, "", 0);
@@ -385,7 +379,7 @@ void handle_user_input(int sockfd)
             send_packet(sockfd, MSG_DELETE_ITEM, arg1, strlen(arg1));
         }
     }
-    // 1. Lệnh Tạo thư mục
+    // Create new folder
     else if (strcasecmp(command, "MKDIR") == 0)
     {
         if (args < 2)
@@ -397,7 +391,7 @@ void handle_user_input(int sockfd)
             send_packet(sockfd, MSG_CREATE_FOLDER, arg1, strlen(arg1));
         }
     }
-    // 2. Lệnh Đổi tên (File hoặc Folder)
+    // Rename folder
     else if (strcasecmp(command, "RENAME") == 0)
     {
         if (args < 3)
@@ -407,11 +401,11 @@ void handle_user_input(int sockfd)
         else
         {
             char payload[256];
-            sprintf(payload, "%s %s", arg1, arg2); // Gộp 2 tham số thành chuỗi payload
+            sprintf(payload, "%s %s", arg1, arg2);
             send_packet(sockfd, MSG_RENAME_ITEM, payload, strlen(payload));
         }
     }
-    // 3. Lệnh Copy File
+    // Copy file
     else if (strcasecmp(command, "COPY") == 0)
     {
         if (args < 3)
@@ -425,7 +419,7 @@ void handle_user_input(int sockfd)
             send_packet(sockfd, MSG_COPY_ITEM, payload, strlen(payload));
         }
     }
-    // 4. Lệnh Di chuyển (Move)
+    // Move file
     else if (strcasecmp(command, "MOVE") == 0)
     {
         if (args < 3)
@@ -439,22 +433,8 @@ void handle_user_input(int sockfd)
             send_packet(sockfd, MSG_MOVE_ITEM, payload, strlen(payload));
         }
     }
-    // Add more commands here...
     else
     {
         printf("Unknown command. Type 'HELP' for menu.\n");
     }
 }
-
-// void print_menu()
-// {
-//     printf("--- COMMAND MENU ---\n");
-//     printf("1. LOGIN <user> <pass>\n");
-//     printf("2. REGISTER <user> <pass>\n");
-//     printf("3. CREATE_GROUP <name>\n");
-//     printf("4. LIST_GROUPS\n");
-//     printf("5. LOGOUT\n");
-//     printf("6. CHANGE_PASS <old> <new>\n");
-//     printf("7. DELETE_ACCOUNT <pass>\n");
-//     printf("7. EXIT\n");
-// }

@@ -10,8 +10,8 @@
 // --- LOW LEVEL WRAPPERS ---
 
 int send_all(int sockfd, const void *buffer, size_t len) {
-    size_t total_sent = 0;      // Total bytes sent so far
-    size_t bytes_left = len;    // Bytes remaining to be sent
+    size_t total_sent = 0;
+    size_t bytes_left = len;
     int n;
 
     while (total_sent < len) {
@@ -97,7 +97,6 @@ int recv_packet(int sockfd, int *type, void *payload_buffer) {
         if (header.payload_len > BUFFER_SIZE) {
             fprintf(stderr, "Error: Payload size (%d) exceeds BUFFER_SIZE (%d)\n", 
                     header.payload_len, BUFFER_SIZE);
-            // Optionally: flush socket here, but returning error is safer
             return -1;
         }
 
@@ -107,13 +106,10 @@ int recv_packet(int sockfd, int *type, void *payload_buffer) {
             return -1;
         }
 
-        // Safety: Null-terminate the string (useful if payload is text)
-        // Ensure payload_buffer is allocated with at least (payload_len + 1)
         ((char*)payload_buffer)[header.payload_len] = '\0';
     } else {
-        // No payload, empty the string
         ((char*)payload_buffer)[0] = '\0';
     }
 
-    return header.payload_len; // Return number of bytes read
+    return header.payload_len;
 }

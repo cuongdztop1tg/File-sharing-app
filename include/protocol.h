@@ -13,8 +13,8 @@ typedef enum
     MSG_REGISTER,
     MSG_LOGIN,
     MSG_LOGOUT,
-    MSG_CHANGE_PASS,    // Payload: "old_password new_password"
-    MSG_DELETE_ACCOUNT, // Payload: "password_confirm"
+    MSG_CHANGE_PASS,
+    MSG_DELETE_ACCOUNT,
 
     // Group management
     MSG_CREATE_GROUP,
@@ -36,15 +36,15 @@ typedef enum
     MSG_COPY_ITEM,
 
     // File Transfer
-    MSG_UPLOAD_REQ,   // Yêu cầu upload: Payload = "filename filesize"
-    MSG_DOWNLOAD_REQ, // Yêu cầu download: Payload = "filename"
-    MSG_FILE_DATA,    // Gửi 1 gói dữ liệu (Chunk)
-    MSG_FILE_END,     // Thông báo đã gửi xong file (EOF)
-    MSG_FILE_ERROR,   // Lỗi trong quá trình truyền file
+    MSG_UPLOAD_REQ,
+    MSG_DOWNLOAD_REQ,
+    MSG_FILE_DATA,
+    MSG_FILE_END,
+    MSG_FILE_ERROR,
 
     // Directory Listing
-    MSG_LIST_FILES,   // Client hỏi danh sách file
-    MSG_LIST_RESPONSE // Server trả về danh sách file (chuỗi dài)
+    MSG_LIST_FILES,
+    MSG_LIST_RESPONSE
 } MessageType;
 
 typedef struct
