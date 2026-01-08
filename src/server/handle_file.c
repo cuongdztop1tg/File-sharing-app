@@ -344,10 +344,16 @@ void handle_rename_item(int sockfd, char *payload) {
         return;
     }
 
+    FILE *f = fopen(old_path, "r");
+    int fd = fileno(f);
+    flock(fd, LOCK_EX);
+    // sleep(20);
+
     if (access(old_path, F_OK) != 0) {
         send_packet(sockfd, MSG_ERROR, "File/Folder not found", 21);
         sprintf(log_msg, "%s - RENAME failed", log_prefix);
         log_activity(log_msg);
+        flock(fd, LOCK_UN);
         return;
     }
 
@@ -355,6 +361,7 @@ void handle_rename_item(int sockfd, char *payload) {
         send_packet(sockfd, MSG_ERROR, "New name already exists", 23);
         sprintf(log_msg, "%s - RENAME failed", log_prefix);
         log_activity(log_msg);
+        flock(fd, LOCK_UN);
         return;
     }
 
@@ -367,6 +374,7 @@ void handle_rename_item(int sockfd, char *payload) {
         sprintf(log_msg, "%s - RENAME failed", log_prefix);
         log_activity(log_msg);
     }
+    flock(fd, LOCK_UN);
 }
 
 void handle_move_item(int sockfd, char *payload) {
@@ -413,6 +421,10 @@ void handle_move_item(int sockfd, char *payload) {
         }
     }
 
+    FILE *f = fopen(src_path, "r");
+    int fd = fileno(f);
+    flock(fd, LOCK_EX);
+
     char raw_dest_path[PATH_MAX];
     snprintf(raw_dest_path, sizeof(raw_dest_path), "%s%s", FILE_STORAGE_PATH, dest_folder_input);
 
@@ -421,6 +433,7 @@ void handle_move_item(int sockfd, char *payload) {
 
     if (realpath(FILE_STORAGE_PATH, resolved_storage_root) == NULL) {
         perror("Server Error: Cannot resolve storage root");
+        flock(fd, LOCK_UN);
         return; 
     }
 
@@ -434,6 +447,7 @@ void handle_move_item(int sockfd, char *payload) {
         char log_msg[512];
         sprintf(log_msg, "%s - SECURITY ALERT: Attempted to move file outside root!", log_prefix);
         log_activity(log_msg);
+        flock(fd, LOCK_UN);
         return;
     }
 
@@ -446,6 +460,7 @@ void handle_move_item(int sockfd, char *payload) {
 
     if (access(final_dest_path, F_OK) == 0) {
         send_packet(sockfd, MSG_ERROR, "Item already exists in destination", 50);
+        flock(fd, LOCK_UN);
         return;
     }
 
@@ -465,6 +480,7 @@ void handle_move_item(int sockfd, char *payload) {
             perror("Move Error");
         }
     }
+    flock(fd, LOCK_UN);
 }
 
 void handle_create_folder(int sockfd, char *foldername) {
