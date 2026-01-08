@@ -17,9 +17,10 @@ pthread_mutex_t db_mutex = PTHREAD_MUTEX_INITIALIZER;
 int db_check_login(const char *username, const char *password)
 {
     pthread_mutex_lock(&db_mutex); // <--- LOCK
-    
+
     FILE *f = fopen(USER_DB_FILE, "r");
-    if (!f){
+    if (!f)
+    {
         pthread_mutex_unlock(&db_mutex); // <--- UNLOCK trước khi return
         return -1;
     }
@@ -33,13 +34,13 @@ int db_check_login(const char *username, const char *password)
         {
             fclose(f);
             pthread_mutex_unlock(&db_mutex); // <--- UNLOCK
-            return id; // Login success
+            return id;                       // Login success
         }
     }
 
     fclose(f);
     pthread_mutex_unlock(&db_mutex); // <--- UNLOCK
-    return -1; // Login failed
+    return -1;                       // Login failed
 }
 
 /**
@@ -48,9 +49,10 @@ int db_check_login(const char *username, const char *password)
  */
 int db_register_user(const char *username, const char *password)
 {
-    pthread_mutex_lock(&db_mutex); // <--- LOCK
+    pthread_mutex_lock(&db_mutex);       // <--- LOCK
     FILE *f = fopen(USER_DB_FILE, "a+"); // Read + Append
-    if (!f){
+    if (!f)
+    {
         pthread_mutex_unlock(&db_mutex);
         return -1;
     }
@@ -93,12 +95,14 @@ int db_register_user(const char *username, const char *password)
  * @brief Đổi mật khẩu cho user ID tương ứng
  * @return 0 nếu thành công, -1 nếu thất bại
  */
-int db_change_password(int user_id, const char *new_password) {
+int db_change_password(int user_id, const char *new_password)
+{
     pthread_mutex_lock(&db_mutex); // <--- LOCK
     FILE *f = fopen(USER_DB_FILE, "r");
     FILE *temp = fopen("users.tmp", "w");
-    
-    if (!f || !temp) {
+
+    if (!f || !temp)
+    {
         pthread_mutex_unlock(&db_mutex);
         return -1;
     }
@@ -108,12 +112,16 @@ int db_change_password(int user_id, const char *new_password) {
     int found = 0;
 
     // Đọc từng dòng từ file cũ
-    while (fscanf(f, "%d %s %s", &id, u, p) != EOF) {
-        if (id == user_id) {
+    while (fscanf(f, "%d %s %s", &id, u, p) != EOF)
+    {
+        if (id == user_id)
+        {
             // Nếu khớp ID, ghi mật khẩu MỚI vào file tạm
             fprintf(temp, "%d %s %s\n", id, u, new_password);
             found = 1;
-        } else {
+        }
+        else
+        {
             // Nếu không khớp, ghi lại dòng cũ
             fprintf(temp, "%d %s %s\n", id, u, p);
         }
@@ -122,12 +130,15 @@ int db_change_password(int user_id, const char *new_password) {
     fclose(f);
     fclose(temp);
 
-    if (found) {
-        remove(USER_DB_FILE);       // Xóa file cũ
+    if (found)
+    {
+        remove(USER_DB_FILE);              // Xóa file cũ
         rename("users.tmp", USER_DB_FILE); // Đổi tên file tạm thành file chính
         pthread_mutex_unlock(&db_mutex);
         return 0;
-    } else {
+    }
+    else
+    {
         remove("users.tmp");
         pthread_mutex_unlock(&db_mutex);
         return -1;
@@ -137,13 +148,17 @@ int db_change_password(int user_id, const char *new_password) {
 /**
  * @brief Xóa user khỏi database
  */
-int db_delete_user(int user_id) {
+int db_delete_user(int user_id)
+{
     pthread_mutex_lock(&db_mutex); // <--- LOCK
     FILE *f = fopen(USER_DB_FILE, "r");
     FILE *temp = fopen("users.tmp", "w");
-    if (!f || !temp) {
-        if (f) fclose(f);
-        if (temp) fclose(temp);
+    if (!f || !temp)
+    {
+        if (f)
+            fclose(f);
+        if (temp)
+            fclose(temp);
         pthread_mutex_unlock(&db_mutex);
         return -1;
     }
@@ -152,10 +167,14 @@ int db_delete_user(int user_id) {
     char u[50], p[50];
     int found = 0;
 
-    while (fscanf(f, "%d %s %s", &id, u, p) != EOF) {
-        if (id == user_id) {
+    while (fscanf(f, "%d %s %s", &id, u, p) != EOF)
+    {
+        if (id == user_id)
+        {
             found = 1; // Bỏ qua dòng này (không ghi vào temp)
-        } else {
+        }
+        else
+        {
             fprintf(temp, "%d %s %s\n", id, u, p);
         }
     }
@@ -163,12 +182,15 @@ int db_delete_user(int user_id) {
     fclose(f);
     fclose(temp);
 
-    if (found) {
+    if (found)
+    {
         remove(USER_DB_FILE);
         rename("users.tmp", USER_DB_FILE);
         pthread_mutex_unlock(&db_mutex);
         return 0;
-    } else {
+    }
+    else
+    {
         remove("users.tmp");
         pthread_mutex_unlock(&db_mutex);
         return -1;

@@ -38,6 +38,9 @@ void get_group_log_prefix(int sockfd, char *buffer)
 // int db_read_group_members(GroupMemberInfo *members, int max_count);
 // int db_write_group_member(const GroupMemberInfo *member);
 
+// In handle_group.c - Add mutex declaration at top
+extern pthread_mutex_t db_mutex;
+
 // --- DB-LEVEL LOGIC ---
 
 int db_create_group_directory(int group_id)
@@ -211,6 +214,7 @@ void handle_join_group(int sockfd, char *payload)
     }
 }
 
+// FIXED: handle_approve_member
 void handle_approve_member(int sockfd, char *payload)
 {
     int group_id, target_user_id;
@@ -221,6 +225,10 @@ void handle_approve_member(int sockfd, char *payload)
     }
 
     Session *s = find_session(sockfd);
+
+    pthread_mutex_lock(&db_mutex); // <--- LOCK
+
+    // Check ownership
     GroupInfo groups[256];
     int g_count = db_read_groups(groups, 256);
     int is_owner = 0;
@@ -232,6 +240,7 @@ void handle_approve_member(int sockfd, char *payload)
 
     if (!is_owner)
     {
+        pthread_mutex_unlock(&db_mutex); // <--- UNLOCK
         char log_prefix[256];
         get_group_log_prefix(sockfd, log_prefix);
         char log_msg[512];
@@ -241,12 +250,19 @@ void handle_approve_member(int sockfd, char *payload)
         return;
     }
 
+    // Read and update members
     GroupMemberInfo members[512];
     int count = db_read_group_members(members, 512);
     int found = 0;
 
-    // Server runs from project root, so use "./data/group_members.txt"
     FILE *f = fopen("./data/group_members.txt", "w");
+    if (!f)
+    {
+        pthread_mutex_unlock(&db_mutex); // <--- UNLOCK
+        send_packet(sockfd, MSG_ERROR, "Database error", 14);
+        return;
+    }
+
     for (int i = 0; i < count; i++)
     {
         if (members[i].group_id == group_id && members[i].user_id == target_user_id)
@@ -257,6 +273,8 @@ void handle_approve_member(int sockfd, char *payload)
         fprintf(f, "%d %d %d\n", members[i].group_id, members[i].user_id, members[i].status);
     }
     fclose(f);
+
+    pthread_mutex_unlock(&db_mutex); // <--- UNLOCK
 
     if (found)
     {
@@ -278,20 +296,22 @@ void handle_approve_member(int sockfd, char *payload)
     }
 }
 
-// --- MISSING FUNCTIONS IMPLEMENTED BELOW ---
-
+// FIXED: handle_leave_group
 void handle_leave_group(int sockfd, char *payload)
 {
     Session *s = find_session(sockfd);
     int group_id = atoi(payload);
 
-    // Check if user is the owner of this group
+    pthread_mutex_lock(&db_mutex); // <--- LOCK
+
+    // Check if user is owner
     GroupInfo groups[256];
     int g_count = db_read_groups(groups, 256);
     for (int i = 0; i < g_count; i++)
     {
         if (groups[i].group_id == group_id && groups[i].owner_id == s->user_id)
         {
+            pthread_mutex_unlock(&db_mutex); // <--- UNLOCK
             char log_prefix[256];
             get_group_log_prefix(sockfd, log_prefix);
             char log_msg[512];
@@ -307,16 +327,25 @@ void handle_leave_group(int sockfd, char *payload)
     int found = 0;
 
     FILE *f = fopen("./data/group_members.txt", "w");
+    if (!f)
+    {
+        pthread_mutex_unlock(&db_mutex); // <--- UNLOCK
+        send_packet(sockfd, MSG_ERROR, "Database error", 14);
+        return;
+    }
+
     for (int i = 0; i < count; i++)
     {
         if (members[i].group_id == group_id && members[i].user_id == s->user_id)
         {
             found = 1;
-            continue; // Skip writing this line to "remove" them
+            continue; // Skip writing this line
         }
         fprintf(f, "%d %d %d\n", members[i].group_id, members[i].user_id, members[i].status);
     }
     fclose(f);
+
+    pthread_mutex_unlock(&db_mutex); // <--- UNLOCK
 
     if (found)
     {
@@ -366,13 +395,17 @@ void handle_list_members(int sockfd, char *payload)
     log_activity(log_msg);
 }
 
+// FIXED: handle_kick_member
 void handle_kick_member(int sockfd, char *payload)
 {
     int group_id, target_id;
     sscanf(payload, "%d %d", &group_id, &target_id);
 
     Session *s = find_session(sockfd);
-    // 1. Check if requester is owner
+
+    pthread_mutex_lock(&db_mutex); // <--- LOCK
+
+    // Check if requester is owner
     GroupInfo groups[256];
     int g_count = db_read_groups(groups, 256);
     int is_owner = 0;
@@ -384,6 +417,7 @@ void handle_kick_member(int sockfd, char *payload)
 
     if (!is_owner)
     {
+        pthread_mutex_unlock(&db_mutex); // <--- UNLOCK
         char log_prefix[256];
         get_group_log_prefix(sockfd, log_prefix);
         char log_msg[512];
@@ -393,10 +427,18 @@ void handle_kick_member(int sockfd, char *payload)
         return;
     }
 
-    // 2. Rewrite members file without the kicked user
+    // Rewrite members file without the kicked user
     GroupMemberInfo members[512];
     int count = db_read_group_members(members, 512);
+
     FILE *f = fopen("./data/group_members.txt", "w");
+    if (!f)
+    {
+        pthread_mutex_unlock(&db_mutex); // <--- UNLOCK
+        send_packet(sockfd, MSG_ERROR, "Database error", 14);
+        return;
+    }
+
     for (int i = 0; i < count; i++)
     {
         if (members[i].group_id == group_id && members[i].user_id == target_id)
@@ -404,6 +446,8 @@ void handle_kick_member(int sockfd, char *payload)
         fprintf(f, "%d %d %d\n", members[i].group_id, members[i].user_id, members[i].status);
     }
     fclose(f);
+
+    pthread_mutex_unlock(&db_mutex); // <--- UNLOCK
 
     char log_prefix[256];
     get_group_log_prefix(sockfd, log_prefix);
@@ -488,6 +532,7 @@ void handle_invite_member(int sockfd, char *payload)
     }
 }
 
+// FIXED: handle_delete_group
 void handle_delete_group(int sockfd, char *payload)
 {
     Session *s = find_session(sockfd);
@@ -504,7 +549,9 @@ void handle_delete_group(int sockfd, char *payload)
         return;
     }
 
-    // 1. Check if user is the owner of this group
+    pthread_mutex_lock(&db_mutex); // <--- LOCK ENTIRE OPERATION
+
+    // 1. Check if user is owner and group exists
     GroupInfo groups[256];
     int g_count = db_read_groups(groups, 256);
     int is_owner = 0;
@@ -527,6 +574,7 @@ void handle_delete_group(int sockfd, char *payload)
 
     if (!group_exists)
     {
+        pthread_mutex_unlock(&db_mutex); // <--- UNLOCK
         char log_prefix[256];
         get_group_log_prefix(sockfd, log_prefix);
         char log_msg[512];
@@ -538,6 +586,7 @@ void handle_delete_group(int sockfd, char *payload)
 
     if (!is_owner)
     {
+        pthread_mutex_unlock(&db_mutex); // <--- UNLOCK
         char log_prefix[256];
         get_group_log_prefix(sockfd, log_prefix);
         char log_msg[512];
@@ -553,6 +602,7 @@ void handle_delete_group(int sockfd, char *payload)
     FILE *f_members = fopen("./data/group_members.txt", "w");
     if (!f_members)
     {
+        pthread_mutex_unlock(&db_mutex); // <--- UNLOCK
         char log_prefix[256];
         get_group_log_prefix(sockfd, log_prefix);
         char log_msg[512];
@@ -574,6 +624,7 @@ void handle_delete_group(int sockfd, char *payload)
     FILE *f_groups = fopen("./data/groups.txt", "w");
     if (!f_groups)
     {
+        pthread_mutex_unlock(&db_mutex); // <--- UNLOCK
         char log_prefix[256];
         get_group_log_prefix(sockfd, log_prefix);
         char log_msg[512];
@@ -591,15 +642,16 @@ void handle_delete_group(int sockfd, char *payload)
     }
     fclose(f_groups);
 
-    // 4. Delete the group directory
-    char dir_path[256];
-    // snprintf(dir_path, sizeof(dir_path), "./data/Group_%d", group_id);
-    snprintf(dir_path, sizeof(dir_path), "./data/files/Group_%d", group_id);
-    errno = 0; // Clear errno before call
-    int dir_res = remove_directory_recursive(dir_path);
-    int saved_errno = errno; // Save errno immediately after call
+    pthread_mutex_unlock(&db_mutex); // <--- UNLOCK (before directory deletion)
 
-    if (dir_res == 0 || saved_errno == ENOENT) // ENOENT means directory doesn't exist, which is fine
+    // 4. Delete the group directory (outside mutex - filesystem operation)
+    char dir_path[256];
+    snprintf(dir_path, sizeof(dir_path), "./data/files/Group_%d", group_id);
+    errno = 0;
+    int dir_res = remove_directory_recursive(dir_path);
+    int saved_errno = errno;
+
+    if (dir_res == 0 || saved_errno == ENOENT)
     {
         char log_prefix[256];
         get_group_log_prefix(sockfd, log_prefix);
@@ -610,8 +662,6 @@ void handle_delete_group(int sockfd, char *payload)
     }
     else
     {
-        // Group and members are already removed from DB, but directory deletion failed
-        // Log warning but still report success since DB cleanup succeeded
         char log_prefix[256];
         get_group_log_prefix(sockfd, log_prefix);
         char log_msg[512];
