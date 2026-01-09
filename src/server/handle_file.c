@@ -194,7 +194,7 @@ void handle_download_request(int sockfd, char *filename) {
 
     Session *s = find_session(sockfd);
     if (s && !check_group_write_permission(s->user_id, filename)) {
-        send_packet(sockfd, MSG_ERROR, "Access Denied: You are not a member of this group", 48);
+        send_packet(sockfd, MSG_ERROR, "Access Denied: You are not a member of this group", 50);
         char log_msg[512];
         sprintf(log_msg, "%s - DOWNLOAD denied to '%s' (Not a group member)", log_prefix, filename);
         log_activity(log_msg);
